@@ -1,0 +1,42 @@
+{
+  "name": "deepseek-harness-companion",
+  "productName": "DeepSeek Harness Companion",
+  "version": "0.1.0",
+  "description": "Independent remote Web client for DeepSeek Harness",
+  "private": true,
+  "license": "MIT",
+  "author": "originalMemory",
+  "type": "module",
+  "main": "lib/main.js",
+  "packageManager": "pnpm@11.28.5",
+  "engines": { "node": ">=24.9.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.check.json",
+    "start": "pnpm run build && electron .",
+    "test": "vitest run",
+    "package:win": "pnpm run build && electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "electron": "44.7.0",
+    "electron-builder": "26.17.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  },
+  "build": {
+    "appId": "com.deepseek.harness.companion",
+    "productName": "DeepSeek Harness Companion",
+    "artifactName": "deepseek-harness-companion-${version}-${os}-${arch}.${ext}",
+    "directories": { "output": "dist" },
+    "files": ["lib/**/*.js", "package.json"],
+    "asar": true,
+    "win": {
+      "icon": "../apps/desktop/resources/icon-windows.png",
+      "executableName": "DeepSeek Harness Companion",
+      "signExecutable": false,
+      "target": ["portable"]
+    },
+    "publish": null
+  }
+}
