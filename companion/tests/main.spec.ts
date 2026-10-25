@@ -1,6 +1,9 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import type { BrowserWindow } from 'electron'
 
+const trayDispose = vi.hoisted(() => vi.fn())
+vi.mock('../src/tray.ts', () => ({ CompanionTray: class { dispose = trayDispose; setRunning = vi.fn(); available = true } }))
+
 const state = vi.hoisted(() => ({
   identity: vi.fn(() => '/companion-data'), saved: vi.fn<() => Promise<string | undefined>>(),
   prompt: vi.fn<() => Promise<string | undefined>>(),
@@ -41,7 +44,8 @@ beforeEach(() => {
 it('opens the remembered server immediately without a local-or-remote choice', async () => {
   await import('../src/main.ts')
   await vi.waitFor(() => { expect(state.remote).toHaveBeenCalledOnce() })
-  expect(state.remote).toHaveBeenCalledWith('https://nas.example.com', expect.anything(), expect.any(Function))
+  expect(state.remote).toHaveBeenCalledWith('https://nas.example.com', expect.anything(), expect.any(Function),
+    process.platform === 'win32' || process.platform === 'darwin' ? expect.anything() : undefined)
   expect(state.prompt).not.toHaveBeenCalled()
   expect(state.identity.mock.invocationCallOrder[0]).toBeLessThan(state.lock.mock.invocationCallOrder[0]!)
 })
@@ -78,4 +82,20 @@ it('does not open another window when the Companion instance already owns its lo
   expect(state.quit).toHaveBeenCalledOnce()
   expect(state.remote).not.toHaveBeenCalled()
   expect(state.prompt).not.toHaveBeenCalled()
+})
+
+it('keeps the tray until quit commits and never reopens an address window while quitting', async () => {
+  const result = Promise.withResolvers<'change' | 'quit'>()
+  state.remote.mockReturnValueOnce(result.promise)
+  await import('../src/main.ts')
+  await vi.waitFor(() => { expect(state.remote).toHaveBeenCalledOnce() })
+  const beforeQuit = state.on.mock.calls.find(call => call[0] === 'before-quit')![1] as () => void
+  const willQuit = state.on.mock.calls.find(call => call[0] === 'will-quit')![1] as () => void
+  beforeQuit()
+  expect(trayDispose).not.toHaveBeenCalled()
+  result.resolve('change')
+  await result.promise
+  expect(state.prompt).not.toHaveBeenCalled()
+  willQuit()
+  if (process.platform === 'win32' || process.platform === 'darwin') expect(trayDispose).toHaveBeenCalledOnce()
 })

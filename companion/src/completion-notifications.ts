@@ -28,9 +28,13 @@ export class CompletionNotifications {
    * @param window - Owned remote window; no JavaScript or IPC is exposed to its page.
    * @param origin - Selected server origin, also used to restrict observable sockets.
    * @param messages - Localized notification and failure copy.
+   * @param activity - Updates the tray with observed running turns, or undefined when observation is unavailable.
    */
-  constructor(private readonly window: BrowserWindow, origin: string, private readonly messages: CompanionMessages) {
-    this.protocol = new CompletionProtocol(origin, notice => { this.show(notice) })
+  constructor(
+    private readonly window: BrowserWindow, origin: string, private readonly messages: CompanionMessages,
+    activity: (count: number | undefined) => void = () => {},
+  ) {
+    this.protocol = new CompletionProtocol(origin, notice => { this.show(notice) }, activity)
     this.contents = window.webContents
     this.debugger = this.contents.debugger
     this.debugger.on('message', this.message)
@@ -39,12 +43,6 @@ export class CompletionNotifications {
     this.contents.on('did-start-navigation', this.navigating)
     this.contents.on('will-prevent-unload', this.keepOpen)
     window.on('close', this.beginClose)
-  }
-
-  /** Show a native test notification even while the window is focused. */
-  test(): void {
-    this.reported = false
-    this.toast(this.messages.notificationTest)
   }
 
   /** Release all listeners and owned toasts; server connections are never changed. */
@@ -89,7 +87,7 @@ export class CompletionNotifications {
     this.reported = false
     void this.attach().then(() => { this.report(this.messages.observerReloadRequired) })
   }
-  private readonly beginClose = (): void => { this.closing = true }
+  private readonly beginClose = (event: Electron.Event): void => { if (!event.defaultPrevented) this.closing = true }
   private readonly keepOpen = (): void => { this.closing = false }
 
   private attach(): Promise<void> {

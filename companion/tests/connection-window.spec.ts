@@ -7,13 +7,13 @@ import type { BrowserWindowConstructorOptions, MenuItemConstructorOptions } from
 import { promptRemoteAddress, remoteUrl, openRemoteWindow } from '../src/connection-window.ts'
 import { companionMessages } from '../src/locale.ts'
 import { COMPANION_NAME } from '../src/identity.ts'
+import type { CompanionTray } from '../src/tray.ts'
 
-const monitoring = vi.hoisted(() => ({ ready: vi.fn<() => Promise<void>>(async () => {}), dispose: vi.fn(), test: vi.fn() }))
+const monitoring = vi.hoisted(() => ({ ready: vi.fn<() => Promise<void>>(async () => {}), dispose: vi.fn() }))
 vi.mock('../src/completion-notifications.ts', () => ({
   CompletionNotifications: class {
     get ready() { return monitoring.ready() }
     dispose = monitoring.dispose
-    test = monitoring.test
   },
 }))
 
@@ -49,8 +49,13 @@ class FakeWindow extends EventEmitter {
   show = vi.fn()
   setMenu = vi.fn()
   isDestroyed = () => this.destroyed
-  close = (): void => { this.destroyed = true; this.emit('closed') }
-  destroy = this.close
+  close = (): void => {
+    const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true } }
+    this.emit('close', event)
+    if (!event.defaultPrevented) this.destroy()
+  }
+  hide = vi.fn()
+  destroy = (): void => { this.destroyed = true; this.emit('closed') }
   loadURL = vi.fn(async (url: string) => { this.url = url })
   navigate(url: string, eventName = 'will-navigate') {
     const event = { preventDefault: vi.fn() }
@@ -73,7 +78,7 @@ async function fixture() {
   onTestFinished(async () => { await rm(userData, { recursive: true, force: true }) })
   const window = new FakeWindow()
   native.create.mockReturnValue(window)
-  onTestFinished(() => { if (!window.destroyed) window.close() })
+  onTestFinished(() => { if (!window.destroyed) window.destroy() })
   return { userData, window, address: join(userData, 'remote-url.txt') }
 }
 
@@ -201,6 +206,22 @@ it('starts a renderer before awaiting network observation, then opens the server
   expect(monitoring.ready).toHaveBeenCalledOnce()
   window.close()
   expect(await result).toBe('quit')
+})
+
+it('hides a remote window to the tray, while server changes and explicit exits still close it', async () => {
+  const { window } = await fixture()
+  const tray = { available: true, setRunning: vi.fn() } satisfies Pick<CompanionTray, 'available' | 'setRunning'>
+  const result = openRemoteWindow('https://nas.example.com/', locale.messages, vi.fn(), tray)
+  const close = { preventDefault: vi.fn() }
+  window.emit('close', close)
+  expect(close.preventDefault).toHaveBeenCalledOnce()
+  expect(window.hide).toHaveBeenCalledOnce()
+  expect(monitoring.dispose).not.toHaveBeenCalled()
+  const submenu = native.menu[0]!.submenu as MenuItemConstructorOptions[]
+  expect(submenu.map(item => item.label).filter(Boolean)).toEqual([locale.messages.change, locale.messages.quit])
+  const change = submenu[0]!.click as () => void
+  change()
+  expect(await result).toBe('change')
 })
 
 it('blocks cross-origin redirects and offers a return to selection', async () => {

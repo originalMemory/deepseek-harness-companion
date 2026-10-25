@@ -148,3 +148,21 @@ it('bounds a Markdown-free Unicode preview to nanobot’s 240-byte budget', () =
   expect(Buffer.byteLength(preview)).toBeLessThanOrEqual(240)
   expect(preview).toMatch(/^鲸+\.\.\.$/u)
 })
+
+it('publishes live running counts, handles parallel turns and returns to unknown on disconnect', () => {
+  const changes = vi.fn()
+  const protocol = new CompletionProtocol('https://nas.example.com', vi.fn(), changes)
+  protocol.created('s', 'wss://nas.example.com/api/remote.mux')
+  protocol.sent('s', JSON.stringify({ type: 'open', streamId: 'c', endpoint: 'session/control' }))
+  const item = (value: unknown) => { protocol.received('s', JSON.stringify({ type: 'item', streamId: 'c', value })) }
+  item({ type: 'baseline', value: { projections: {} } })
+  const update = (sessionId: string, openTurnStartSeq: number | null) => {
+    item({ type: 'projection', sessionId, key: 'turnBoundary', value: { lastTurn: 1, openTurnStartSeq } })
+  }
+  update('a', 0)
+  update('b', 4)
+  update('a', null)
+  update('b', null)
+  protocol.closed('s')
+  expect(changes.mock.calls.map(call => call[0])).toEqual([0, 1, 2, 1, 0, undefined])
+})

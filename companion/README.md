@@ -14,6 +14,7 @@ Companion opens a remote DeepSeek Harness Web GUI without starting a local Host.
 
 - [Run](#run)
 - [Notifications](#notifications)
+- [Tray and running status](#tray-and-running-status)
 - [Identity and storage](#identity-and-storage)
 - [Maintenance and limits](#maintenance-and-limits)
 - [Dev Note](#dev-note)
@@ -40,17 +41,25 @@ pnpm --dir companion check
 pnpm --dir companion package:win
 ```
 
-The portable executable is written under `companion/dist/`. Packaging uses the existing desktop icon without modifying it.
+The portable executable is written under `companion/dist/`. Packaging uses the existing desktop icon without modifying it. `pnpm --dir companion package:mac` configures a macOS ZIP build with ad-hoc signing; it requires qualification on macOS.
 
 <a id="notifications"></a>
 
 ## Notifications
 
-Companion observes the page's existing Gateway WebSocket in the shell; no NAS plugin, server edit, extra authenticated connection, preload, or page-script patch is needed. When the window is in the background, an observed reply end can display a native system notification. Like nanobot, focused windows are quiet, clicking a notification restores and focuses the window, and a successful reply can include a plain-text preview bounded to 240 UTF-8 bytes. **DeepSeek Harness Companion → Test notification** displays a test even while focused.
+Companion observes the page's existing Gateway WebSocket in the shell; no NAS plugin, server edit, extra authenticated connection, preload, or page-script patch is needed. When the window is in the background, an observed reply end can display a native system notification. Like nanobot, focused windows are quiet, clicking a notification restores and focuses the window, and a successful reply can include a plain-text preview bounded to 240 UTF-8 bytes.
 
 Durable `turn/end` events distinguish success, failure and cancellation; known cancellation is quiet. For other background sessions, the live control stream can reveal that a turn ended without revealing its reason, so the reminder says the turn ended rather than claiming success. Active detailed streams take precedence over this fallback. Historical snapshots and connection loss alone never trigger a reminder. Deduplication retains the latest end per session for up to 256 sessions in each remote window. Only supported same-origin `/api/remote.mux` and `/remote/api/remote.mux` channels are observed; changing their wire format requires updating Companion. Opening Developer Tools pauses observation; close the tools and reload the remote page to restore its stream subscriptions. Observation or native-notification failures are reported; ordinary browsing remains available.
 
-Companion currently has no tray: minimize it to keep receiving events; closing the window exits the client and stops observation while server tasks continue.
+<a id="tray-and-running-status"></a>
+
+## Tray and running status
+
+Windows reuses the official desktop's whale ICO and its Open/Quit tray interaction. macOS uses a template image derived from the same official whale in the menu bar. While observed turns are running, Windows adds a static blue dot to the tray icon and macOS shows `●` beside the whale; hovering displays the running count. An unavailable baseline or connection is labeled as waiting for session status, rather than idle. The official desktop currently has a Windows tray but no macOS menu-bar icon or running-state image change; these extensions belong to Companion.
+
+Closing a remote window hides it to the tray and keeps observation and notifications active. The tray opens the retained window; its Quit entry and the application menu exit the client. Changing server replaces the window, and closing the initial address form cancels startup. If the tray cannot be created or stops accepting updates, the window stays accessible and close-to-quit remains available. Tray disposal waits until application quit commits, so a page that prevents unloading keeps its tray. Server tasks continue after the client exits.
+
+Committed tray assets are generated from the official source by `node --import tsx/esm companion/scripts/render-tray-assets.mjs`, using the parent repository's installed development dependencies. The standalone client does not need those dependencies to build or run.
 
 <a id="identity-and-storage"></a>
 
@@ -66,7 +75,7 @@ Only the server origin is written to `remote-url.txt`; pairing paths, query para
 
 All fork-specific code, configuration, dependencies, tests and expected output live under `companion/`, with an independent lockfile. Merging upstream desktop changes normally touches different files, although an upstream directory with the same name can conflict. Review Electron dependency upgrades and changes to server pairing or Web authentication separately. Official native desktop features do not automatically appear in Companion; server Web UI changes arrive from the server.
 
-Companion has no desktop preload, local filesystem bridge, native permission grants, local onboarding, tray, or automatic updater. English and Chinese shell copy are included. The portable Windows package is unsigned; macOS and Linux packaging are not configured or qualified.
+Companion has no desktop preload, local filesystem bridge, native permission grants, local onboarding, or automatic updater. English and Chinese shell copy are included. The portable Windows package is unsigned; macOS uses ad-hoc signing and requires native qualification. Linux packaging is not configured.
 
 <a id="dev-note"></a>
 

@@ -48,12 +48,18 @@ export function notificationPreview(value: string): string {
 export class CompletionProtocol {
   private readonly sockets = new Map<string, Map<string, Stream>>()
   private readonly progress = new Map<ObservedSessionId, Progress>()
+  private known = false
+  private activity: number | undefined
 
   /**
    * @param origin - Operator-selected HTTP(S) server origin.
    * @param notify - Receives each observed session/turn at most once within the retained 256-session window.
+   * @param changed - Receives observed running counts; undefined means no established live baseline.
    */
-  constructor(private readonly origin: string, private readonly notify: (notice: CompletionNotice) => void) {}
+  constructor(
+    private readonly origin: string, private readonly notify: (notice: CompletionNotice) => void,
+    private readonly changed: (count: number | undefined) => void = () => {},
+  ) {}
 
   /**
    * Admit the original or paired remote mux, excluding tokens from retained state.
@@ -78,7 +84,7 @@ export class CompletionProtocol {
     const streams = this.sockets.get(id)
     const message = parse(text)
     if (streams === undefined || message === undefined || typeof message.streamId !== 'string') return
-    if (message.type === 'cancel') { streams.delete(message.streamId); this.finishPending(); return }
+    if (message.type === 'cancel') { streams.delete(message.streamId); this.finishPending(); this.publishActivity(); return }
     if (message.type !== 'open') return
     if (message.endpoint === 'session/control') streams.set(message.streamId, { kind: 'control' })
     if (message.endpoint !== 'session/follow' || !record(message.payload) || !record(message.payload.args)
@@ -95,6 +101,10 @@ export class CompletionProtocol {
    * @param text - One server WebSocket text message.
    */
   received(id: string, text: string): void {
+    try { this.receive(id, text) } finally { this.publishActivity() }
+  }
+
+  private receive(id: string, text: string): void {
     const message = parse(text)
     if (message === undefined || typeof message.streamId !== 'string') return
     const streams = this.sockets.get(id)
@@ -105,6 +115,7 @@ export class CompletionProtocol {
     const value = message.value
     if (stream.kind === 'control') {
       if (value.type === 'baseline' && record(value.value) && record(value.value.projections)) {
+        this.known = true
         for (const [sessionId, baseline] of Object.entries(value.value.projections)) {
           if (record(baseline) && record(baseline.values)) this.boundary(sessionId, baseline.values.turnBoundary, true)
         }
@@ -114,6 +125,7 @@ export class CompletionProtocol {
       return
     }
     if (value.type === 'snapshot') {
+      this.known = true
       if (record(value.projections) && record(value.projections.values)) {
         this.boundary(stream.sessionId, value.projections.values.turnBoundary, true)
       }
@@ -123,6 +135,7 @@ export class CompletionProtocol {
     const event = value.event
     const data = value.event.data
     if (!Number.isSafeInteger(data.turn) || typeof data.turn !== 'number' || data.turn < 1) return
+    this.known = true
     const progress = this.state(stream.sessionId, data.turn)
     if (data.turn !== progress.turn) return
     if (event.type === 'turn/start') progress.open = data.turn > progress.settled
@@ -138,12 +151,19 @@ export class CompletionProtocol {
   }
 
   /** @param id - Closed socket identity; transport closure itself never counts as task completion. */
-  closed(id: string): void { this.sockets.delete(id); this.finishPending() }
+  closed(id: string): void {
+    this.sockets.delete(id)
+    this.finishPending()
+    if (this.sockets.size === 0) this.reset()
+    else this.publishActivity()
+  }
 
   /** Drop generation-owned sockets and in-progress previews on navigation or debugger detachment. */
   reset(): void {
     this.sockets.clear()
+    this.known = false
     for (const state of this.progress.values()) { state.open = false; state.preview = ''; state.controlEnded = false }
+    this.publishActivity()
   }
 
   private state(id: ObservedSessionId, turn: number): Progress {
@@ -161,6 +181,7 @@ export class CompletionProtocol {
       || (value.openTurnStartSeq !== null && (typeof value.openTurnStartSeq !== 'number'
         || !Number.isSafeInteger(value.openTurnStartSeq) || value.openTurnStartSeq < 0))) return
     const state = this.state(id, value.lastTurn)
+    this.known = true
     if (state.turn !== value.lastTurn) return
     const open = value.openTurnStartSeq !== null
     if (baseline) {
@@ -191,5 +212,12 @@ export class CompletionProtocol {
     state.settled = state.turn
     this.notify({ sessionId: id, turn: state.turn, outcome, preview: state.preview })
     state.preview = ''
+  }
+
+  private publishActivity(): void {
+    const count = this.known ? [...this.progress.values()].filter(state => state.open).length : undefined
+    if (count === this.activity) return
+    this.activity = count
+    this.changed(count)
   }
 }

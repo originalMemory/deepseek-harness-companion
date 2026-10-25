@@ -15,7 +15,8 @@
     "check": "tsc -p tsconfig.check.json",
     "start": "pnpm run build && electron .",
     "test": "vitest run",
-    "package:win": "pnpm run build && electron-builder --win portable --x64"
+    "package:win": "pnpm run build && electron-builder --win portable --x64",
+    "package:mac": "pnpm run build && electron-builder --mac zip"
   },
   "devDependencies": {
     "@types/node": "22.20.1",
@@ -29,13 +30,19 @@
     "productName": "DeepSeek Harness Companion",
     "artifactName": "deepseek-harness-companion-${version}-${os}-${arch}.${ext}",
     "directories": { "output": "dist" },
-    "files": ["lib/**/*.js", "package.json"],
+    "files": ["lib/**/*.js", "assets/**/*", "package.json"],
     "asar": true,
     "win": {
       "icon": "../apps/desktop/resources/icon-windows.png",
       "executableName": "DeepSeek Harness Companion",
       "signExecutable": false,
       "target": ["portable"]
+    },
+    "mac": {
+      "icon": "../apps/desktop/resources/icon-macos.png",
+      "category": "public.app-category.developer-tools",
+      "identity": "-",
+      "target": ["zip"]
     },
     "publish": null
   }

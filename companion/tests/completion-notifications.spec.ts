@@ -104,7 +104,7 @@ it('shows a background native notification once and focuses the window when clic
   s.notifications.dispose()
 })
 
-it('suppresses focused-window reminders and known cancellation, while the test action still displays', async () => {
+it('suppresses focused-window reminders and known cancellation', async () => {
   const s = setup()
   await s.notifications.ready
   native.focused = true
@@ -112,9 +112,6 @@ it('suppresses focused-window reminders and known cancellation, while the test a
   native.focused = false
   s.finish(2, 'aborted')
   expect(s.toasts).toHaveLength(0)
-  native.focused = true
-  s.notifications.test()
-  expect(s.toasts[0]!.body).toBe(s.messages.notificationTest)
   s.notifications.dispose()
 })
 
@@ -172,13 +169,22 @@ it('treats ordinary close as teardown and never reads a destroyed window’s web
   expect(contents.debugger.listenerCount('message')).toBe(0)
 })
 
+it('keeps observing after a tray handler prevents the window from closing', async () => {
+  const s = setup()
+  await s.notifications.ready
+  s.window.emit('close', { defaultPrevented: true })
+  native.command.mockRejectedValueOnce(new Error('observer unavailable'))
+  await s.notifications.ready
+  expect(native.error).toHaveBeenCalledWith('DeepSeek Harness Companion', s.messages.observerUnavailable)
+  s.notifications.dispose()
+})
+
 it.each(['en', 'zh-CN'])('owns the native popup copy for %s', async (language) => {
   const s = setup(language)
   await s.notifications.ready
   s.finish(1)
   s.finish(2, 'error')
   s.finish(3, 'blocked')
-  s.notifications.test()
   await expect(JSON.stringify(s.toasts.map(toast => ({ title: toast.title, body: toast.body })), null, 2) + '\n')
     .toMatchFileSnapshot(`./expected/completion-notifications-${language}.json`)
   s.notifications.dispose()

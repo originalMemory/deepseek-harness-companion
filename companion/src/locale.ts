@@ -1,8 +1,11 @@
 /** Remote-client copy follows the OS language, with English as fallback. */
 const en = {
-  testNotification: 'Test notification',
-  notificationTest: 'Companion notifications are working.',
-  notificationUnavailable: 'The system notification could not be shown. Check Windows notification settings and try Test notification again.',
+  openApplication: 'Open DeepSeek Harness Companion',
+  activityUnknown: 'Waiting for session status',
+  activityRunning: 'Replying ({count})',
+  activityIdle: 'Idle',
+  trayUnavailable: 'The tray is unavailable. The window will stay accessible; closing it will exit Companion.',
+  notificationUnavailable: 'The system notification could not be shown. Check system notification settings.',
   observerUnavailable: 'Completion observation is unavailable. Reopen the remote window; browsing can continue.',
   observerPaused: 'Completion observation is paused while Developer Tools is open. Close the tools and reload the remote page to resume.',
   observerReloadRequired: 'Reload the remote page to restore completion observation after closing Developer Tools.',
@@ -26,9 +29,12 @@ const en = {
 export type CompanionMessages = typeof en
 
 const zh: CompanionMessages = {
-  testNotification: '测试通知',
-  notificationTest: 'Companion 系统通知功能正常',
-  notificationUnavailable: '无法显示系统通知，请检查 Windows 通知设置后再次点击“测试通知”。',
+  openApplication: '打开 DeepSeek Harness Companion',
+  activityUnknown: '等待会话状态',
+  activityRunning: '正在回复（{count}）',
+  activityIdle: '空闲',
+  trayUnavailable: '托盘不可用，窗口仍可访问；关闭窗口将退出 Companion。',
+  notificationUnavailable: '无法显示系统通知，请检查系统通知设置。',
   observerUnavailable: '无法监听回复结束事件，请重新打开远程窗口；浏览功能仍可使用。',
   observerPaused: '开发者工具打开期间暂停监听回复结束事件，请关闭开发者工具后刷新远程页面以恢复。',
   observerReloadRequired: '开发者工具已关闭，请刷新远程页面以恢复回复通知。',

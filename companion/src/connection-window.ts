@@ -5,6 +5,7 @@ import { BrowserWindow, dialog, Menu, session, shell } from 'electron'
 import { COMPANION_NAME } from './identity.ts'
 import type { CompanionMessages } from './locale.ts'
 import { CompletionNotifications } from './completion-notifications.ts'
+import type { CompanionTray } from './tray.ts'
 
 const SELECT = 'https://dsh-companion.invalid/connect'
 
@@ -111,10 +112,12 @@ export async function promptRemoteAddress(
  * @param url - Validated HTTP(S) address, including a first-use pairing link.
  * @param messages - Localized shell copy.
  * @param ownWindow - Registers the window for process activation and identity.
- * @returns Whether to change server or quit; closing leaves all server tasks running.
+ * @param tray - Available application tray; omission preserves close-to-quit behavior.
+ * @returns Whether to change server or quit; ordinary close hides to an available tray without stopping observation.
  */
 export function openRemoteWindow(
   url: string, messages: CompanionMessages, ownWindow: (window: BrowserWindow) => void,
+  tray?: Pick<CompanionTray, 'available' | 'setRunning'>,
 ): Promise<'change' | 'quit'> {
   const origin = new URL(url).origin
   const storage = session.fromPartition('persist:companion')
@@ -126,10 +129,14 @@ export function openRemoteWindow(
   })
   ownWindow(window)
   return new Promise((resolve) => {
-    const notifications = new CompletionNotifications(window, origin, messages)
     let outcome: 'change' | 'quit' = 'quit'
+    let forceClose = false
     let reporting = false
-    const change = (): void => { outcome = 'change'; window.close() }
+    const change = (): void => { forceClose = true; outcome = 'change'; window.close() }
+    window.on('close', (event) => {
+      if (!forceClose && tray?.available) { event.preventDefault(); window.hide() }
+    })
+    const notifications = new CompletionNotifications(window, origin, messages, count => { tray?.setRunning(count) })
     window.once('closed', () => {
       notifications.dispose()
       Menu.setApplicationMenu(null)
@@ -139,7 +146,6 @@ export function openRemoteWindow(
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       { label: COMPANION_NAME, submenu: [
         { label: messages.change, click: change },
-        { label: messages.testNotification, click: () => { notifications.test() } },
         { type: 'separator' }, { label: messages.quit, role: 'quit' },
       ] },
       { role: 'editMenu' }, { role: 'viewMenu' },
@@ -158,7 +164,7 @@ export function openRemoteWindow(
           const current = remoteUrl(window.webContents.getURL())
           load(current !== undefined && new URL(current).origin === origin ? current : url)
         } else if (result.response === 1) change()
-        else window.close()
+        else { forceClose = true; window.close() }
       } catch (_error) {
         // A failed native dialog must not leave a remote window without a recovery action.
         if (!window.isDestroyed()) { dialog.showErrorBox(COMPANION_NAME, messages.failed); change() }
