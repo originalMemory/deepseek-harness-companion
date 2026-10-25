@@ -1,5 +1,14 @@
 /** Remote-client copy follows the OS language, with English as fallback. */
 const en = {
+  testNotification: 'Test notification',
+  notificationTest: 'Companion notifications are working.',
+  notificationUnavailable: 'The system notification could not be shown. Check Windows notification settings and try Test notification again.',
+  observerUnavailable: 'Completion observation is unavailable. Reopen the remote window; browsing can continue.',
+  observerPaused: 'Completion observation is paused while Developer Tools is open. Close the tools and reload the remote page to resume.',
+  observerReloadRequired: 'Reload the remote page to restore completion observation after closing Developer Tools.',
+  replyCompleted: 'AI response completed',
+  replyFailed: 'The AI turn failed. Open Companion to review the error.',
+  turnEnded: 'This session turn ended. Open Companion to view the result.',
   language: 'en',
   title: 'Connect to DeepSeek Harness Companion',
   address: 'Server address or pairing link',
@@ -17,6 +26,15 @@ const en = {
 export type CompanionMessages = typeof en
 
 const zh: CompanionMessages = {
+  testNotification: '测试通知',
+  notificationTest: 'Companion 系统通知功能正常',
+  notificationUnavailable: '无法显示系统通知，请检查 Windows 通知设置后再次点击“测试通知”。',
+  observerUnavailable: '无法监听回复结束事件，请重新打开远程窗口；浏览功能仍可使用。',
+  observerPaused: '开发者工具打开期间暂停监听回复结束事件，请关闭开发者工具后刷新远程页面以恢复。',
+  observerReloadRequired: '开发者工具已关闭，请刷新远程页面以恢复回复通知。',
+  replyCompleted: 'AI 回复已完成',
+  replyFailed: '本轮 AI 运行失败，请打开 Companion 查看错误。',
+  turnEnded: '本轮会话运行已结束，请打开 Companion 查看结果。',
   language: 'zh-CN',
   title: '连接 DeepSeek Harness Companion',
   address: '服务器地址或配对链接',

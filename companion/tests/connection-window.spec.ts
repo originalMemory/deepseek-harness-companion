@@ -8,6 +8,15 @@ import { promptRemoteAddress, remoteUrl, openRemoteWindow } from '../src/connect
 import { companionMessages } from '../src/locale.ts'
 import { COMPANION_NAME } from '../src/identity.ts'
 
+const monitoring = vi.hoisted(() => ({ ready: vi.fn<() => Promise<void>>(async () => {}), dispose: vi.fn(), test: vi.fn() }))
+vi.mock('../src/completion-notifications.ts', () => ({
+  CompletionNotifications: class {
+    get ready() { return monitoring.ready() }
+    dispose = monitoring.dispose
+    test = monitoring.test
+  },
+}))
+
 const native = vi.hoisted(() => ({
   create: vi.fn<(options: BrowserWindowConstructorOptions) => FakeWindow>(),
   error: vi.fn(), dialog: vi.fn(), external: vi.fn(async () => {}), menu: [] as MenuItemConstructorOptions[],
@@ -180,6 +189,20 @@ it('isolates persistent remote cookies, denies native permissions and returns to
   expect(native.storage.flushStorageData).toHaveBeenCalledOnce()
 })
 
+it('starts a renderer before awaiting network observation, then opens the server', async () => {
+  const { window } = await fixture()
+  const renderer = Promise.withResolvers<undefined>()
+  window.loadURL.mockReturnValueOnce(renderer.promise)
+  const result = openRemoteWindow('https://nas.example.com/', locale.messages, vi.fn())
+  expect(window.loadURL).toHaveBeenCalledExactlyOnceWith('about:blank')
+  expect(monitoring.ready).not.toHaveBeenCalled()
+  renderer.resolve(undefined)
+  await vi.waitFor(() => { expect(window.loadURL).toHaveBeenLastCalledWith('https://nas.example.com/') })
+  expect(monitoring.ready).toHaveBeenCalledOnce()
+  window.close()
+  expect(await result).toBe('quit')
+})
+
 it('blocks cross-origin redirects and offers a return to selection', async () => {
   const { window } = await fixture()
   native.dialog.mockResolvedValue({ response: 1 })
@@ -202,11 +225,12 @@ it('leaves embedded page redirects to Chromium without changing the server windo
 it('keeps same-origin popup links in the remote window and opens only Web links externally', async () => {
   const { window } = await fixture()
   const result = openRemoteWindow('https://nas.example.com/', locale.messages, vi.fn())
+  await vi.waitFor(() => { expect(window.loadURL).toHaveBeenLastCalledWith('https://nas.example.com/') })
   const popup = window.webContents.setWindowOpenHandler.mock.calls[0]![0]
   expect(popup({ url: 'file:///etc/passwd' })).toEqual({ action: 'deny' })
   expect(native.external).not.toHaveBeenCalled()
   popup({ url: 'https://nas.example.com/pair-app' })
-  expect(window.loadURL).toHaveBeenLastCalledWith('https://nas.example.com/pair-app')
+  await vi.waitFor(() => { expect(window.loadURL).toHaveBeenLastCalledWith('https://nas.example.com/pair-app') })
   popup({ url: 'https://docs.example.com/' })
   expect(native.external).toHaveBeenCalledExactlyOnceWith('https://docs.example.com/')
   window.close()
@@ -217,13 +241,13 @@ it('retries a failed initial load and ignores aborted or subframe loads', async 
   const { window } = await fixture()
   const decision = Promise.withResolvers<{ response: number }>()
   native.dialog.mockReturnValueOnce(decision.promise)
-  window.loadURL.mockRejectedValueOnce(new Error('offline'))
+  window.loadURL.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('offline'))
   const result = openRemoteWindow('https://nas.example.com/', locale.messages, vi.fn())
   await vi.waitFor(() => { expect(native.dialog).toHaveBeenCalledOnce() })
   window.webContents.emit('did-fail-load', {}, -105, '', '', true)
   expect(native.dialog).toHaveBeenCalledOnce()
   decision.resolve({ response: 0 })
-  await vi.waitFor(() => { expect(window.loadURL).toHaveBeenCalledTimes(2) })
+  await vi.waitFor(() => { expect(window.loadURL).toHaveBeenCalledTimes(4) })
   expect(window.loadURL.mock.lastCall).toEqual(['https://nas.example.com/'])
   window.webContents.emit('did-fail-load', {}, -3, '', '', true)
   window.webContents.emit('did-fail-load', {}, -105, '', '', false)

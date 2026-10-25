@@ -13,6 +13,7 @@ Companion 打开远程 DeepSeek Harness Web GUI，不启动本地 Host。它是�
 ## 目录
 
 - [运行](#run)
+- [通知](#notifications)
 - [身份与存储](#identity-and-storage)
 - [维护与限制](#maintenance-and-limits)
 - [开发说明](#dev-note)
@@ -40,6 +41,16 @@ pnpm --dir companion package:win
 ```
 
 便携版可执行文件写入 `companion/dist/`。打包复用现有桌面图标，不修改图标文件。
+
+<a id="notifications"></a>
+
+## 通知
+
+Companion 在壳内观察网页现有的 Gateway WebSocket，不需要 NAS 插件、服务器修改、额外的认证连接、preload 或网页脚本补丁。窗口位于后台时，观察到回复结束可弹出系统原生通知。参照 nanobot，窗口在前台时不打扰，点击通知恢复并聚焦窗口，成功回复可附带最多 240 个 UTF-8 字节的纯文本预览。通过 **DeepSeek Harness Companion → 测试通知** 可在前台主动测试弹出效果。
+
+持久化的 `turn/end` 事件可区分成功、失败和取消，已知取消不提示。对于其他后台会话，实时控制流可能只表明一轮运行已结束而不提供结束原因，因此通用通知只说明运行结束，不宣称成功。活跃的详细事件流优先于此回退。历史快照和单纯断线不触发提醒。每个远程窗口最多为 256 个会话保留最近一次结束的去重状态。仅观察同来源的 `/api/remote.mux` 和 `/remote/api/remote.mux` 通道；若其消息格式变化，需要更新 Companion。打开开发者工具期间暂停观察，关闭后需刷新远程页面以恢复通道订阅。观察或系统通知失败会被报告，正常浏览仍可使用。
+
+Companion 当前没有托盘：最小化窗口可继续接收事件，关闭窗口会退出客户端并停止观察，服务器上的任务仍继续运行。
 
 <a id="identity-and-storage"></a>
 

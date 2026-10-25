@@ -13,6 +13,7 @@ Companion opens a remote DeepSeek Harness Web GUI without starting a local Host.
 ## Table of Contents
 
 - [Run](#run)
+- [Notifications](#notifications)
 - [Identity and storage](#identity-and-storage)
 - [Maintenance and limits](#maintenance-and-limits)
 - [Dev Note](#dev-note)
@@ -40,6 +41,16 @@ pnpm --dir companion package:win
 ```
 
 The portable executable is written under `companion/dist/`. Packaging uses the existing desktop icon without modifying it.
+
+<a id="notifications"></a>
+
+## Notifications
+
+Companion observes the page's existing Gateway WebSocket in the shell; no NAS plugin, server edit, extra authenticated connection, preload, or page-script patch is needed. When the window is in the background, an observed reply end can display a native system notification. Like nanobot, focused windows are quiet, clicking a notification restores and focuses the window, and a successful reply can include a plain-text preview bounded to 240 UTF-8 bytes. **DeepSeek Harness Companion → Test notification** displays a test even while focused.
+
+Durable `turn/end` events distinguish success, failure and cancellation; known cancellation is quiet. For other background sessions, the live control stream can reveal that a turn ended without revealing its reason, so the reminder says the turn ended rather than claiming success. Active detailed streams take precedence over this fallback. Historical snapshots and connection loss alone never trigger a reminder. Deduplication retains the latest end per session for up to 256 sessions in each remote window. Only supported same-origin `/api/remote.mux` and `/remote/api/remote.mux` channels are observed; changing their wire format requires updating Companion. Opening Developer Tools pauses observation; close the tools and reload the remote page to restore its stream subscriptions. Observation or native-notification failures are reported; ordinary browsing remains available.
+
+Companion currently has no tray: minimize it to keep receiving events; closing the window exits the client and stops observation while server tasks continue.
 
 <a id="identity-and-storage"></a>
 

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { BrowserWindow, dialog, Menu, session, shell } from 'electron'
 import { COMPANION_NAME } from './identity.ts'
 import type { CompanionMessages } from './locale.ts'
+import { CompletionNotifications } from './completion-notifications.ts'
 
 const SELECT = 'https://dsh-companion.invalid/connect'
 
@@ -125,13 +126,21 @@ export function openRemoteWindow(
   })
   ownWindow(window)
   return new Promise((resolve) => {
+    const notifications = new CompletionNotifications(window, origin, messages)
     let outcome: 'change' | 'quit' = 'quit'
     let reporting = false
     const change = (): void => { outcome = 'change'; window.close() }
-    window.once('closed', () => { Menu.setApplicationMenu(null); storage.flushStorageData(); resolve(outcome) })
+    window.once('closed', () => {
+      notifications.dispose()
+      Menu.setApplicationMenu(null)
+      storage.flushStorageData()
+      resolve(outcome)
+    })
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       { label: COMPANION_NAME, submenu: [
-        { label: messages.change, click: change }, { type: 'separator' }, { label: messages.quit, role: 'quit' },
+        { label: messages.change, click: change },
+        { label: messages.testNotification, click: () => { notifications.test() } },
+        { type: 'separator' }, { label: messages.quit, role: 'quit' },
       ] },
       { role: 'editMenu' }, { role: 'viewMenu' },
     ]))
@@ -156,7 +165,10 @@ export function openRemoteWindow(
       } finally { reporting = false }
     }
     const load = (target: string): void => {
-      void window.loadURL(target).catch((error: unknown) => {
+      // Network.enable needs a renderer target before the remote page opens its first socket.
+      void window.loadURL('about:blank').then(() => notifications.ready).then(() => {
+        if (!window.isDestroyed()) return window.loadURL(target)
+      }).catch((error: unknown) => {
         if (error instanceof Error && 'code' in error && error.code === 'ERR_ABORTED') return
         void failed()
       })
