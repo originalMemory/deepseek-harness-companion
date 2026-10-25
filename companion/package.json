@@ -11,7 +11,7 @@
   "packageManager": "pnpm@11.28.5",
   "engines": { "node": ">=24.9.0" },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && tsdown --config tsdown.config.ts",
     "check": "tsc -p tsconfig.check.json",
     "start": "pnpm run build && electron .",
     "test": "vitest run",
@@ -22,6 +22,7 @@
     "@types/node": "22.20.1",
     "electron": "44.7.0",
     "electron-builder": "26.17.0",
+    "tsdown": "0.22.2",
     "typescript": "6.0.3",
     "vitest": "4.1.11"
   },
@@ -30,7 +31,7 @@
     "productName": "DeepSeek Harness Companion",
     "artifactName": "deepseek-harness-companion-${version}-${os}-${arch}.${ext}",
     "directories": { "output": "dist" },
-    "files": ["lib/**/*.js", "assets/**/*", "package.json"],
+    "files": ["lib/**/*.js", "lib/**/*.cjs", "assets/**/*", "package.json"],
     "asar": true,
     "win": {
       "icon": "../apps/desktop/resources/icon-windows.png",

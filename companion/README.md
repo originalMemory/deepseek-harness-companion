@@ -13,6 +13,7 @@ Companion opens a remote DeepSeek Harness Web GUI without starting a local Host.
 ## Table of Contents
 
 - [Run](#run)
+- [Window and shortcut](#window-and-shortcut)
 - [Notifications](#notifications)
 - [Tray and running status](#tray-and-running-status)
 - [Identity and storage](#identity-and-storage)
@@ -30,7 +31,7 @@ pnpm --dir companion install
 pnpm --dir companion start
 ```
 
-On first use, enter your server address or pairing link and complete pairing inside Companion. Later starts open the remembered server directly. Use **DeepSeek Harness Companion → Change server…** to enter another address or a fresh pairing link. Connection failures offer retry, changing server, or quit. The window stays on the selected origin; use that origin's pairing link when the server also advertises other LAN or public origins.
+On first use, enter your server address or pairing link and complete pairing inside Companion. Later starts open the remembered server directly. Use **Application → Change server…** on Windows or **DeepSeek Harness Companion → Change server…** on macOS to enter another address or a fresh pairing link. Connection failures offer retry, changing server, or quit. The window stays on the selected origin; use that origin's pairing link when the server also advertises other LAN or public origins.
 
 Check and package the unsigned Windows portable application:
 
@@ -43,11 +44,21 @@ pnpm --dir companion package:win
 
 The portable executable is written under `companion/dist/`. Packaging uses the existing desktop icon without modifying it. `pnpm --dir companion package:mac` configures a macOS ZIP build with ad-hoc signing; it requires qualification on macOS.
 
+<a id="window-and-shortcut"></a>
+
+## Window and shortcut
+
+Windows uses the official integrated caption and Application/Edit menu; macOS uses its inset traffic lights, sidebar vibrancy and native application menu. The sandboxed caption preload imports the official platform, Windows appearance and caption-menu implementations directly. The server must provide the corresponding Web UI styles. Caption IPC accepts only the selected origin's main frame and provides no filesystem or Harness Host access.
+
+`Cmd/Ctrl+Shift+E` hides a focused visible window, or restores and focuses it otherwise. Raising it keeps the current conversation and draft, and focuses the visible editable chat composer when present; other pages remain on their current page. No dedicated conversation is created. An unavailable global shortcut is reported; check whether nanobot or another application already uses it. Tray activation and a second launch also focus the current composer.
+
+After building, `node companion/scripts/check-window.mjs` checks the real sandboxed preload, caption menu and composer focus with a temporary profile and local fixture page.
+
 <a id="notifications"></a>
 
 ## Notifications
 
-Companion observes the page's existing Gateway WebSocket in the shell; no NAS plugin, server edit, extra authenticated connection, preload, or page-script patch is needed. When the window is in the background, an observed reply end can display a native system notification. Like nanobot, focused windows are quiet, clicking a notification restores and focuses the window, and a successful reply can include a plain-text preview bounded to 240 UTF-8 bytes.
+Companion observes the page's existing Gateway WebSocket in the shell; no NAS plugin, server edit, or extra authenticated connection is needed. When the window is in the background, an observed reply end can display a native system notification. Like nanobot, focused windows are quiet, clicking a notification restores and focuses the window, and a successful reply can include a plain-text preview bounded to 240 UTF-8 bytes.
 
 Durable `turn/end` events distinguish success, failure and cancellation; known cancellation is quiet. For other background sessions, the live control stream can reveal that a turn ended without revealing its reason, so the reminder says the turn ended rather than claiming success. Active detailed streams take precedence over this fallback. Historical snapshots and connection loss alone never trigger a reminder. Deduplication retains the latest end per session for up to 256 sessions in each remote window. Only supported same-origin `/api/remote.mux` and `/remote/api/remote.mux` channels are observed; changing their wire format requires updating Companion. Opening Developer Tools pauses observation; close the tools and reload the remote page to restore its stream subscriptions. Observation or native-notification failures are reported; ordinary browsing remains available.
 
@@ -75,7 +86,7 @@ Only the server origin is written to `remote-url.txt`; pairing paths, query para
 
 All fork-specific code, configuration, dependencies, tests and expected output live under `companion/`, with an independent lockfile. Merging upstream desktop changes normally touches different files, although an upstream directory with the same name can conflict. Review Electron dependency upgrades and changes to server pairing or Web authentication separately. Official native desktop features do not automatically appear in Companion; server Web UI changes arrive from the server.
 
-Companion has no desktop preload, local filesystem bridge, native permission grants, local onboarding, or automatic updater. English and Chinese shell copy are included. The portable Windows package is unsigned; macOS uses ad-hoc signing and requires native qualification. Linux packaging is not configured.
+Companion has no local filesystem bridge, native permission grants, local onboarding, or automatic updater. English and Chinese shell copy are included. The caption preload is bundled from the fork's source during builds, so upstream caption changes must be checked after merging. The portable Windows package is unsigned; macOS uses ad-hoc signing and requires native qualification. Linux packaging is not configured.
 
 <a id="dev-note"></a>
 

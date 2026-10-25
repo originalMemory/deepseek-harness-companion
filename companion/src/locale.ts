@@ -1,5 +1,7 @@
 /** Remote-client copy follows the OS language, with English as fallback. */
 const en = {
+  shortcutUnavailable: 'Cmd/Ctrl+Shift+E is unavailable. Check whether another app is using it; you can still open Companion from the tray.',
+  undo: 'Undo', redo: 'Redo', cut: 'Cut', copy: 'Copy', paste: 'Paste', delete: 'Delete', selectAll: 'Select All',
   openApplication: 'Open DeepSeek Harness Companion',
   activityUnknown: 'Waiting for session status',
   activityRunning: 'Replying ({count})',
@@ -29,6 +31,8 @@ const en = {
 export type CompanionMessages = typeof en
 
 const zh: CompanionMessages = {
+  shortcutUnavailable: '无法注册 Cmd/Ctrl+Shift+E，请检查是否被其他应用占用；仍可通过托盘打开 Companion。',
+  undo: '撤销', redo: '重做', cut: '剪切', copy: '复制', paste: '粘贴', delete: '删除', selectAll: '全选',
   openApplication: '打开 DeepSeek Harness Companion',
   activityUnknown: '等待会话状态',
   activityRunning: '正在回复（{count}）',

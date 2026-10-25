@@ -10,6 +10,13 @@ import { COMPANION_NAME } from '../src/identity.ts'
 import type { CompanionTray } from '../src/tray.ts'
 
 const monitoring = vi.hoisted(() => ({ ready: vi.fn<() => Promise<void>>(async () => {}), dispose: vi.fn() }))
+vi.mock('../src/window-chrome.ts', () => ({
+  captionPreload: '/companion/preload.cjs', remoteWindowChrome: () => ({ titleBarStyle: 'hidden' }),
+  hideCompanionWindow: (window: FakeWindow) => { window.hide() },
+  installWindowChrome: (_window: FakeWindow, _origin: string, messages: { change: string; quit: string }, change: () => void) => {
+    native.menu = [{ submenu: [{ label: messages.change, click: change }, { label: messages.quit, role: 'quit' }] }]
+  },
+}))
 vi.mock('../src/completion-notifications.ts', () => ({
   CompletionNotifications: class {
     get ready() { return monitoring.ready() }
@@ -180,6 +187,7 @@ it('isolates persistent remote cookies, denies native permissions and returns to
   const result = openRemoteWindow('https://nas.example.com/', locale.messages, vi.fn())
   expect(native.partition).toHaveBeenCalledWith('persist:companion')
   expect(native.create.mock.lastCall![0].webPreferences).toEqual({
+    preload: '/companion/preload.cjs',
     session: native.storage, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true,
   })
   const callback = vi.fn()

@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import type { BrowserWindow } from 'electron'
 
 const trayDispose = vi.hoisted(() => vi.fn())
+vi.mock('../src/window-chrome.ts', () => ({ hideCompanionWindow: (window: BrowserWindow) => { window.hide() } }))
 vi.mock('../src/tray.ts', () => ({ CompanionTray: class { dispose = trayDispose; setRunning = vi.fn(); available = true } }))
 
 const state = vi.hoisted(() => ({
@@ -9,20 +10,25 @@ const state = vi.hoisted(() => ({
   prompt: vi.fn<() => Promise<string | undefined>>(),
   remote: vi.fn<(url: string, messages: unknown, own: (window: BrowserWindow) => void) => Promise<'change' | 'quit'>>(),
   quit: vi.fn(), on: vi.fn(), lock: vi.fn(() => true), error: vi.fn(),
+  register: vi.fn<(_accelerator: string, _callback: () => void) => boolean>(() => true), unregister: vi.fn(),
 }))
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events')
   return {
     app: { requestSingleInstanceLock: state.lock, quit: state.quit, on: state.on, whenReady: async () => {}, getLocale: () => 'zh-CN' },
     dialog: { showErrorBox: state.error },
+    globalShortcut: { register: state.register, unregisterAll: state.unregister },
     BrowserWindow: class extends EventEmitter {
       setTitle = vi.fn()
       isDestroyed = () => false
       isMinimized = () => true
+      isVisible = vi.fn(() => true)
+      isFocused = vi.fn(() => true)
+      hide = vi.fn()
       restore = vi.fn()
       show = vi.fn()
       focus = vi.fn()
-      webContents = new EventEmitter()
+      webContents = Object.assign(new EventEmitter(), { send: vi.fn() })
     },
   }
 })
@@ -39,6 +45,7 @@ beforeEach(() => {
   state.prompt.mockReset().mockResolvedValue(undefined)
   state.remote.mockReset().mockResolvedValue('quit')
   state.lock.mockReturnValue(true)
+  state.register.mockReturnValue(true)
 })
 
 it('opens the remembered server immediately without a local-or-remote choice', async () => {
@@ -70,6 +77,7 @@ it('focuses only its own window and keeps Companion in page titles', async () =>
   focus()
   expect(window.restore).toHaveBeenCalledOnce()
   expect(window.focus).toHaveBeenCalledOnce()
+  expect(window.webContents.send).toHaveBeenCalledWith('companion:focus-composer')
   const event = { preventDefault: vi.fn() }
   window.webContents.emit('page-title-updated', event, 'My server')
   expect(event.preventDefault).toHaveBeenCalledOnce()
@@ -97,5 +105,32 @@ it('keeps the tray until quit commits and never reopens an address window while 
   await result.promise
   expect(state.prompt).not.toHaveBeenCalled()
   willQuit()
+  expect(state.unregister).toHaveBeenCalledOnce()
   if (process.platform === 'win32' || process.platform === 'darwin') expect(trayDispose).toHaveBeenCalledOnce()
+})
+
+it('toggles the focused window and raises the retained conversation with composer focus', async () => {
+  const { BrowserWindow: TestWindow } = await import('electron')
+  const window = new TestWindow()
+  const minimized = vi.spyOn(window, 'isMinimized').mockReturnValue(false)
+  state.remote.mockImplementationOnce(async (_url, _messages, own) => { own(window); return 'quit' })
+  await import('../src/main.ts')
+  await vi.waitFor(() => { expect(state.remote).toHaveBeenCalledOnce() })
+  expect(state.register).toHaveBeenCalledWith('CommandOrControl+Shift+E', expect.any(Function))
+  const toggle = state.register.mock.calls[0]![1] as () => void
+  toggle()
+  expect(window.hide).toHaveBeenCalledOnce()
+  expect(window.webContents.send).not.toHaveBeenCalled()
+  vi.spyOn(window, 'isFocused').mockReturnValue(false)
+  minimized.mockReturnValue(true)
+  toggle()
+  expect(window.restore).toHaveBeenCalledOnce()
+  expect(window.webContents.send).toHaveBeenCalledExactlyOnceWith('companion:focus-composer')
+})
+
+it('reports an occupied global shortcut while still opening the server', async () => {
+  state.register.mockReturnValue(false)
+  await import('../src/main.ts')
+  await vi.waitFor(() => { expect(state.remote).toHaveBeenCalledOnce() })
+  expect(state.error).toHaveBeenCalledWith('DeepSeek Harness Companion', expect.stringContaining('Cmd/Ctrl+Shift+E'))
 })

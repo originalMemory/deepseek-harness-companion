@@ -1,11 +1,12 @@
 /** Remote-only address entry and sandboxed Web windows; no Harness Host is imported. */
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { BrowserWindow, dialog, Menu, session, shell } from 'electron'
+import { BrowserWindow, dialog, session, shell } from 'electron'
 import { COMPANION_NAME } from './identity.ts'
 import type { CompanionMessages } from './locale.ts'
 import { CompletionNotifications } from './completion-notifications.ts'
 import type { CompanionTray } from './tray.ts'
+import { captionPreload, hideCompanionWindow, installWindowChrome, remoteWindowChrome } from './window-chrome.ts'
 
 const SELECT = 'https://dsh-companion.invalid/connect'
 
@@ -108,7 +109,7 @@ export async function promptRemoteAddress(
 }
 
 /**
- * Open remote Web content with separate persistent cookies and no native bridge.
+ * Open remote Web content with separate persistent cookies and isolated caption IPC.
  * @param url - Validated HTTP(S) address, including a first-use pairing link.
  * @param messages - Localized shell copy.
  * @param ownWindow - Registers the window for process activation and identity.
@@ -125,7 +126,8 @@ export function openRemoteWindow(
   storage.setPermissionCheckHandler(() => false)
   const window = new BrowserWindow({
     width: 1280, height: 820, minWidth: 520, minHeight: 600, title: COMPANION_NAME,
-    webPreferences: { session: storage, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
+    ...remoteWindowChrome(),
+    webPreferences: { preload: captionPreload, session: storage, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   })
   ownWindow(window)
   return new Promise((resolve) => {
@@ -134,22 +136,15 @@ export function openRemoteWindow(
     let reporting = false
     const change = (): void => { forceClose = true; outcome = 'change'; window.close() }
     window.on('close', (event) => {
-      if (!forceClose && tray?.available) { event.preventDefault(); window.hide() }
+      if (!forceClose && tray?.available) { event.preventDefault(); hideCompanionWindow(window) }
     })
     const notifications = new CompletionNotifications(window, origin, messages, count => { tray?.setRunning(count) })
     window.once('closed', () => {
       notifications.dispose()
-      Menu.setApplicationMenu(null)
       storage.flushStorageData()
       resolve(outcome)
     })
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
-      { label: COMPANION_NAME, submenu: [
-        { label: messages.change, click: change },
-        { type: 'separator' }, { label: messages.quit, role: 'quit' },
-      ] },
-      { role: 'editMenu' }, { role: 'viewMenu' },
-    ]))
+    installWindowChrome(window, origin, messages, change)
     const failed = async (): Promise<void> => {
       if (reporting || window.isDestroyed()) return
       reporting = true

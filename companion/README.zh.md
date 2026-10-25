@@ -13,6 +13,7 @@ Companion 打开远程 DeepSeek Harness Web GUI，不启动本地 Host。它是�
 ## 目录
 
 - [运行](#run)
+- [窗口与快捷键](#window-and-shortcut)
 - [通知](#notifications)
 - [托盘与运行状态](#tray-and-running-status)
 - [身份与存储](#identity-and-storage)
@@ -30,7 +31,7 @@ pnpm --dir companion install
 pnpm --dir companion start
 ```
 
-首次使用时输入服务器地址或配对链接，并在 Companion 内完成配对。以后启动会直接打开记住的服务器。通过 **DeepSeek Harness Companion → 更换服务器…** 输入其他地址或新的配对链接。连接失败时可重试、更换服务器或退出。窗口内导航限于选定来源；若服务器还公布了其他局域网或公网来源，请使用所选来源的配对链接。
+首次使用时输入服务器地址或配对链接，并在 Companion 内完成配对。以后启动会直接打开记住的服务器。在 Windows 通过 **应用 → 更换服务器…**、macOS 通过 **DeepSeek Harness Companion → 更换服务器…** 输入其他地址或新的配对链接。连接失败时可重试、更换服务器或退出。窗口内导航限于选定来源；若服务器还公布了其他局域网或公网来源，请使用所选来源的配对链接。
 
 检查并打包未签名的 Windows 便携应用：
 
@@ -43,11 +44,21 @@ pnpm --dir companion package:win
 
 便携版可执行文件写入 `companion/dist/`。打包复用现有桌面图标，不修改图标文件。`pnpm --dir companion package:mac` 配置了使用临时签名的 macOS ZIP 打包，需要在 macOS 上验证。
 
+<a id="window-and-shortcut"></a>
+
+## 窗口与快捷键
+
+Windows 使用官方的一体化标题栏和应用/编辑菜单；macOS 使用内嵌红绿灯、侧栏毛玻璃和原生应用菜单。沙箱中的标题栏 preload 直接导入官方的平台标记、Windows 外观同步和标题栏菜单实现。服务器需要提供对应的 Web UI 样式。标题栏 IPC 只接受所选来源的主框架，不提供文件系统或 Harness Host 访问能力。
+
+`Cmd/Ctrl+Shift+E` 在窗口可见且获得焦点时隐藏窗口，否则恢复并聚焦窗口。唤起时保留当前会话和草稿，并在聊天输入框可见且可编辑时聚焦输入框；其他页面保留当前页面。不创建专用会话。全局快捷键不可用时会显示提示，请检查 nanobot 或其他应用是否已经占用。托盘唤起和再次启动客户端也会聚焦当前输入框。
+
+构建后可运行 `node companion/scripts/check-window.mjs`，通过临时配置目录和本地测试页面检查真实的沙箱 preload、标题栏菜单和输入框聚焦。
+
 <a id="notifications"></a>
 
 ## 通知
 
-Companion 在壳内观察网页现有的 Gateway WebSocket，不需要 NAS 插件、服务器修改、额外的认证连接、preload 或网页脚本补丁。窗口位于后台时，观察到回复结束可弹出系统原生通知。参照 nanobot，窗口在前台时不打扰，点击通知恢复并聚焦窗口，成功回复可附带最多 240 个 UTF-8 字节的纯文本预览。
+Companion 在壳内观察网页现有的 Gateway WebSocket，不需要 NAS 插件、服务器修改或额外的认证连接。窗口位于后台时，观察到回复结束可弹出系统原生通知。参照 nanobot，窗口在前台时不打扰，点击通知恢复并聚焦窗口，成功回复可附带最多 240 个 UTF-8 字节的纯文本预览。
 
 持久化的 `turn/end` 事件可区分成功、失败和取消，已知取消不提示。对于其他后台会话，实时控制流可能只表明一轮运行已结束而不提供结束原因，因此通用通知只说明运行结束，不宣称成功。活跃的详细事件流优先于此回退。历史快照和单纯断线不触发提醒。每个远程窗口最多为 256 个会话保留最近一次结束的去重状态。仅观察同来源的 `/api/remote.mux` 和 `/remote/api/remote.mux` 通道；若其消息格式变化，需要更新 Companion。打开开发者工具期间暂停观察，关闭后需刷新远程页面以恢复通道订阅。观察或系统通知失败会被报告，正常浏览仍可使用。
 
@@ -75,7 +86,7 @@ Windows 复用官方桌面的鲸鱼 ICO 和打开、退出交互。macOS 在菜�
 
 fork 专属的代码、配置、依赖、测试和预期输出全部位于 `companion/`，并使用独立锁文件。合并上游桌面改动时通常涉及不同文件，但若上游增加同名目录，仍可能冲突。Electron 依赖升级、服务器配对或 Web 认证变化需要单独检查。官方原生桌面功能不会自动出现在 Companion 中，服务器 Web UI 的变化由服务器提供。
 
-Companion 不提供桌面 preload、本地文件系统桥接、原生权限授权、本地账号引导或自动更新器。桌面壳包含中英文文案。Windows 便携包未签名；macOS 使用临时签名，需要本机验证。Linux 打包尚未配置。
+Companion 不提供本地文件系统桥接、原生权限授权、本地账号引导或自动更新器。桌面壳包含中英文文案。标题栏 preload 在构建时从 fork 源码打包，合并上游标题栏改动后需要检查。Windows 便携包未签名；macOS 使用临时签名，需要本机验证。Linux 打包尚未配置。
 
 <a id="dev-note"></a>
 
