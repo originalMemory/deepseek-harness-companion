@@ -48,11 +48,11 @@ The portable executable is written under `companion/dist/`. Packaging uses the e
 
 ## Window and shortcut
 
-Windows uses the official integrated caption and Application/Edit menu; macOS uses its inset traffic lights, sidebar vibrancy and native application menu. The sandboxed caption preload imports the official platform, Windows appearance and caption-menu implementations directly. The server must provide the corresponding Web UI styles. Caption IPC accepts only the selected origin's main frame and provides no filesystem or Harness Host access.
+Windows uses the official integrated caption and Application/Edit menu. macOS retains native inset traffic lights and the application menu, with a reserved caption band above the Web layout. The sandboxed preload imports the official Windows appearance, caption-menu and fullscreen implementations directly. It leaves `data-platform` unset: that attribute selects the official native keyboard bridge, whereas Companion uses Web shortcuts and preferences. The server must provide the corresponding Windows Web UI styles. Caption IPC accepts only the selected origin's main frame and provides no filesystem or Harness Host access. Right-click anywhere in the page for Change server or Quit, including authentication and boot-error pages.
 
 `Cmd/Ctrl+Shift+E` hides a focused visible window, or restores and focuses it otherwise. Raising it keeps the current conversation and draft, and focuses the visible editable chat composer when present; other pages remain on their current page. No dedicated conversation is created. An unavailable global shortcut is reported; check whether nanobot or another application already uses it. Tray activation and a second launch also focus the current composer.
 
-After building, `node companion/scripts/check-window.mjs` checks the real sandboxed preload, caption menu and composer focus with a temporary profile and local fixture page.
+After building, `node companion/scripts/check-window.mjs` checks the shipped remote-window entry with a temporary profile and local fixture pages: Web shortcut detection, authentication-page recovery, clipboard permissions, caption menu and composer focus.
 
 <a id="notifications"></a>
 
@@ -60,7 +60,7 @@ After building, `node companion/scripts/check-window.mjs` checks the real sandbo
 
 Companion observes the page's existing Gateway WebSocket in the shell; no NAS plugin, server edit, or extra authenticated connection is needed. When the window is in the background, an observed reply end can display a native system notification. Like nanobot, focused windows are quiet, clicking a notification restores and focuses the window, and a successful reply can include a plain-text preview bounded to 240 UTF-8 bytes.
 
-Durable `turn/end` events distinguish success, failure and cancellation; known cancellation is quiet. For other background sessions, the live control stream can reveal that a turn ended without revealing its reason, so the reminder says the turn ended rather than claiming success. Active detailed streams take precedence over this fallback. Historical snapshots and connection loss alone never trigger a reminder. Deduplication retains the latest end per session for up to 256 sessions in each remote window. Only supported same-origin `/api/remote.mux` and `/remote/api/remote.mux` channels are observed; changing their wire format requires updating Companion. Opening Developer Tools pauses observation; close the tools and reload the remote page to restore its stream subscriptions. Observation or native-notification failures are reported; ordinary browsing remains available.
+Durable `turn/end` events distinguish success, failure and cancellation; known cancellation is quiet. For other background sessions, the live control stream can reveal that a turn ended without revealing its reason, so the reminder says the turn ended rather than claiming success. Active detailed streams take precedence over this fallback. Historical snapshots and connection loss alone never trigger a reminder. Deduplication retains up to 256 inactive sessions in each remote window; running sessions are retained separately from that limit. A terminated observation stream invalidates running state that no surviving live stream covers. Only supported same-origin `/api/remote.mux` and `/remote/api/remote.mux` channels are observed; changing their wire format requires updating Companion. Opening Developer Tools pauses observation; close the tools and reload the remote page to restore its stream subscriptions. Observation or native-notification failures are reported; ordinary browsing remains available.
 
 <a id="tray-and-running-status"></a>
 
@@ -86,7 +86,7 @@ Only the server origin is written to `remote-url.txt`; pairing paths, query para
 
 All fork-specific code, configuration, dependencies, tests and expected output live under `companion/`, with an independent lockfile. Merging upstream desktop changes normally touches different files, although an upstream directory with the same name can conflict. Review Electron dependency upgrades and changes to server pairing or Web authentication separately. Official native desktop features do not automatically appear in Companion; server Web UI changes arrive from the server.
 
-Companion has no local filesystem bridge, native permission grants, local onboarding, or automatic updater. English and Chinese shell copy are included. The caption preload is bundled from the fork's source during builds, so upstream caption changes must be checked after merging. The portable Windows package is unsigned; macOS uses ad-hoc signing and requires native qualification. Linux packaging is not configured.
+Companion allows sanitized clipboard writes only from the selected-origin main frame; clipboard reads and other native permissions are denied. It has no local filesystem bridge, local onboarding, or automatic updater. English and Chinese shell copy are included. The caption preload is bundled from the fork's source during builds, so upstream caption changes must be checked after merging. The portable Windows package is unsigned; macOS uses ad-hoc signing and requires native qualification. Linux packaging is not configured.
 
 <a id="dev-note"></a>
 

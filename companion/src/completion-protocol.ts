@@ -12,7 +12,7 @@ export interface CompletionNotice {
   readonly preview: string
 }
 
-type Stream = { kind: 'control' } | { kind: 'follow'; sessionId: ObservedSessionId }
+type Stream = { kind: 'control'; ready: boolean } | { kind: 'follow'; sessionId: ObservedSessionId; ready: boolean }
 interface Progress { turn: number; open: boolean; settled: number; preview: string; controlEnded: boolean }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -53,7 +53,7 @@ export class CompletionProtocol {
 
   /**
    * @param origin - Operator-selected HTTP(S) server origin.
-   * @param notify - Receives each observed session/turn at most once within the retained 256-session window.
+   * @param notify - Receives each observed session/turn at most once; deduplication retains 256 inactive sessions and all running sessions.
    * @param changed - Receives observed running counts; undefined means no established live baseline.
    */
   constructor(
@@ -84,14 +84,14 @@ export class CompletionProtocol {
     const streams = this.sockets.get(id)
     const message = parse(text)
     if (streams === undefined || message === undefined || typeof message.streamId !== 'string') return
-    if (message.type === 'cancel') { streams.delete(message.streamId); this.finishPending(); this.publishActivity(); return }
+    if (message.type === 'cancel') { streams.delete(message.streamId); this.finishPending(); this.reconcileStreams(); this.publishActivity(); return }
     if (message.type !== 'open') return
-    if (message.endpoint === 'session/control') streams.set(message.streamId, { kind: 'control' })
+    if (message.endpoint === 'session/control') streams.set(message.streamId, { kind: 'control', ready: false })
     if (message.endpoint !== 'session/follow' || !record(message.payload) || !record(message.payload.args)
       || !record(message.payload.args.request) || !record(message.payload.args.request.address)) return
     const address = message.payload.args.request.address
     if (address.kind === 'session' && sessionId(address.sessionId)) {
-      streams.set(message.streamId, { kind: 'follow', sessionId: address.sessionId })
+      streams.set(message.streamId, { kind: 'follow', sessionId: address.sessionId, ready: false })
     }
   }
 
@@ -110,21 +110,24 @@ export class CompletionProtocol {
     const streams = this.sockets.get(id)
     const stream = streams?.get(message.streamId)
     if (stream === undefined) return
-    if (message.type === 'end' || message.type === 'error') { streams?.delete(message.streamId); this.finishPending(); return }
+    if (message.type === 'end' || message.type === 'error') { streams?.delete(message.streamId); this.finishPending(); this.reconcileStreams(); return }
     if (message.type !== 'item' || !record(message.value)) return
     const value = message.value
     if (stream.kind === 'control') {
       if (value.type === 'baseline' && record(value.value) && record(value.value.projections)) {
+        stream.ready = true
         this.known = true
         for (const [sessionId, baseline] of Object.entries(value.value.projections)) {
           if (record(baseline) && record(baseline.values)) this.boundary(sessionId, baseline.values.turnBoundary, true)
         }
       } else if (value.type === 'projection' && value.key === 'turnBoundary' && typeof value.sessionId === 'string') {
+        stream.ready = true
         this.boundary(value.sessionId, value.value, false)
       }
       return
     }
     if (value.type === 'snapshot') {
+      stream.ready = true
       this.known = true
       if (record(value.projections) && record(value.projections.values)) {
         this.boundary(stream.sessionId, value.projections.values.turnBoundary, true)
@@ -136,6 +139,7 @@ export class CompletionProtocol {
     const data = value.event.data
     if (!Number.isSafeInteger(data.turn) || typeof data.turn !== 'number' || data.turn < 1) return
     this.known = true
+    stream.ready = true
     const progress = this.state(stream.sessionId, data.turn)
     if (data.turn !== progress.turn) return
     if (event.type === 'turn/start') progress.open = data.turn > progress.settled
@@ -154,6 +158,7 @@ export class CompletionProtocol {
   closed(id: string): void {
     this.sockets.delete(id)
     this.finishPending()
+    this.reconcileStreams()
     if (this.sockets.size === 0) this.reset()
     else this.publishActivity()
   }
@@ -171,7 +176,6 @@ export class CompletionProtocol {
     if (state === undefined) {
       state = { turn, open: false, settled: 0, preview: '', controlEnded: false }
       this.progress.set(id, state)
-      if (this.progress.size > 256) this.progress.delete(this.progress.keys().next().value!)
     } else if (turn > state.turn) { state.turn = turn; state.open = false; state.preview = ''; state.controlEnded = false }
     return state
   }
@@ -205,16 +209,30 @@ export class CompletionProtocol {
     }
   }
 
+  private reconcileStreams(): void {
+    const streams = [...this.sockets.values()].flatMap(value => [...value.values()]).filter(stream => stream.ready)
+    this.known = streams.length > 0
+    if (streams.some(stream => stream.kind === 'control')) return
+    const followed = new Set(streams.flatMap(stream => stream.kind === 'follow' ? [stream.sessionId] : []))
+    for (const [id, state] of this.progress) {
+      if (!followed.has(id)) { state.open = false; state.preview = ''; state.controlEnded = false }
+    }
+  }
+
   private settle(id: ObservedSessionId, state: Progress, outcome: CompletionNotice['outcome']): void {
     if (state.turn <= state.settled) return
     state.open = false
     state.controlEnded = false
     state.settled = state.turn
+    this.progress.delete(id)
+    this.progress.set(id, state)
     this.notify({ sessionId: id, turn: state.turn, outcome, preview: state.preview })
     state.preview = ''
   }
 
   private publishActivity(): void {
+    const inactive = [...this.progress].filter(([, state]) => !state.open)
+    for (const [id] of inactive.slice(0, Math.max(0, inactive.length - 256))) this.progress.delete(id)
     const count = this.known ? [...this.progress.values()].filter(state => state.open).length : undefined
     if (count === this.activity) return
     this.activity = count

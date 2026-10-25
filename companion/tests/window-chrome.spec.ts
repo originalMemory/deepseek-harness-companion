@@ -18,7 +18,7 @@ vi.mock('electron', () => ({
     setApplicationMenu: vi.fn(),
     buildFromTemplate: (items: MenuItemConstructorOptions[]) => {
       native.items = items
-      return { popup: ({ callback }: { callback: () => void }) => { callback() } }
+      return { popup: ({ callback }: { callback?: () => void }) => { callback?.() } }
     },
   },
   BrowserWindow: class extends EventEmitter {
@@ -40,6 +40,8 @@ it('uses the official native caption geometry and rejects unowned frames before 
     const window = new BrowserWindow()
     const change = vi.fn()
     installWindowChrome(window, 'https://nas.example.com', companionMessages('en'), change)
+    window.webContents.emit('context-menu')
+    expect(native.items[0]!.label).toBe('Change server…')
     const handler = native.handlers.get('dsh-desktop:windows-menu')!
     const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame } as IpcMainInvokeEvent
     for (const invalid of [

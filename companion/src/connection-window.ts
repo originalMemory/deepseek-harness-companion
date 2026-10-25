@@ -122,13 +122,21 @@ export function openRemoteWindow(
 ): Promise<'change' | 'quit'> {
   const origin = new URL(url).origin
   const storage = session.fromPartition('persist:companion')
-  storage.setPermissionRequestHandler((_contents, _permission, callback) => { callback(false) })
-  storage.setPermissionCheckHandler(() => false)
   const window = new BrowserWindow({
     width: 1280, height: 820, minWidth: 520, minHeight: 600, title: COMPANION_NAME,
     ...remoteWindowChrome(),
     webPreferences: { preload: captionPreload, session: storage, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   })
+  const selectedOrigin = (value: string): boolean => {
+    try { return new URL(value).origin === origin } catch (_error) { return false /* Provisional frames may have no URL. */ }
+  }
+  storage.setPermissionRequestHandler((contents, permission, callback, details) => {
+    callback(!window.isDestroyed() && contents === window.webContents && permission === 'clipboard-sanitized-write'
+      && details.isMainFrame && selectedOrigin(details.requestingUrl))
+  })
+  storage.setPermissionCheckHandler((contents, permission, requestingOrigin, details) =>
+    !window.isDestroyed() && contents === window.webContents && permission === 'clipboard-sanitized-write'
+    && details.isMainFrame && selectedOrigin(requestingOrigin))
   ownWindow(window)
   return new Promise((resolve) => {
     let outcome: 'change' | 'quit' = 'quit'

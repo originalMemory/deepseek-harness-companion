@@ -29,9 +29,9 @@ const native = vi.hoisted(() => ({
   error: vi.fn(), dialog: vi.fn(), external: vi.fn(async () => {}), menu: [] as MenuItemConstructorOptions[],
   storage: {
     setPermissionRequestHandler: vi.fn<(
-      handler: (contents: unknown, permission: string, callback: (allow: boolean) => void) => void,
+      handler: (contents: unknown, permission: string, callback: (allow: boolean) => void, details: { isMainFrame: boolean; requestingUrl: string }) => void,
     ) => void>(),
-    setPermissionCheckHandler: vi.fn<(handler: () => boolean) => void>(), flushStorageData: vi.fn(),
+    setPermissionCheckHandler: vi.fn<(handler: (contents: unknown, permission: string, origin: string, details: { isMainFrame: boolean }) => boolean) => void>(), flushStorageData: vi.fn(),
   },
   partition: vi.fn(),
 }))
@@ -191,9 +191,24 @@ it('isolates persistent remote cookies, denies native permissions and returns to
     session: native.storage, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true,
   })
   const callback = vi.fn()
-  native.storage.setPermissionRequestHandler.mock.calls[0]![0]({}, 'media', callback)
+  native.storage.setPermissionRequestHandler.mock.calls[0]![0]({}, 'media', callback, { isMainFrame: true, requestingUrl: 'https://nas.example.com/' })
   expect(callback).toHaveBeenCalledWith(false)
-  expect(native.storage.setPermissionCheckHandler.mock.calls[0]![0]()).toBe(false)
+  const check = native.storage.setPermissionCheckHandler.mock.calls[0]![0]
+  const request = native.storage.setPermissionRequestHandler.mock.calls[0]![0]
+  expect(check(window.webContents, 'clipboard-sanitized-write', 'https://nas.example.com/', { isMainFrame: true })).toBe(true)
+  for (const [contents, permission, origin, isMainFrame] of [
+    [{}, 'clipboard-sanitized-write', 'https://nas.example.com', true],
+    [window.webContents, 'media', 'https://nas.example.com', true],
+    [window.webContents, 'clipboard-sanitized-write', 'https://other.example.com', true],
+    [window.webContents, 'clipboard-sanitized-write', '', true],
+    [window.webContents, 'clipboard-sanitized-write', 'https://nas.example.com', false],
+  ] as const) {
+    expect(check(contents, permission, origin, { isMainFrame })).toBe(false)
+    request(contents, permission, callback, { isMainFrame, requestingUrl: origin })
+    expect(callback).toHaveBeenLastCalledWith(false)
+  }
+  request(window.webContents, 'clipboard-sanitized-write', callback, { isMainFrame: true, requestingUrl: 'https://nas.example.com/path' })
+  expect(callback).toHaveBeenLastCalledWith(true)
   expect(window.navigate('https://nas.example.com/pair-app').preventDefault).not.toHaveBeenCalled()
   const submenu = native.menu[0]!.submenu as MenuItemConstructorOptions[]
   const change = submenu[0]!.click as () => void

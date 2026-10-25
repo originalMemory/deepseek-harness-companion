@@ -53,6 +53,10 @@ export function installWindowChrome(window: BrowserWindow, origin: string, messa
     { label: COMPANION_NAME, submenu: applicationItems() },
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
   ]))
+  // Recovery stays available before the remote application mounts its caption menu.
+  window.webContents.on('context-menu', () => {
+    Menu.buildFromTemplate(applicationItems()).popup({ window })
+  })
   const appearance = (event: Electron.IpcMainEvent, _locale: unknown, color: unknown, symbolColor: unknown): void => {
     if (!trusted(event)) return
     const validColor = (value: unknown): value is string => typeof value === 'string' && /^(?:#[\da-f]{3,8}|rgba?\([\d.,%\s]+\))$/iu.test(value)

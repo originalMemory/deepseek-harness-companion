@@ -166,3 +166,56 @@ it('publishes live running counts, handles parallel turns and returns to unknown
   protocol.closed('s')
   expect(changes.mock.calls.map(call => call[0])).toEqual([0, 1, 2, 1, 0, undefined])
 })
+
+it('retains running sessions while bounding settled-session deduplication', () => {
+  const notices = vi.fn()
+  const changes = vi.fn()
+  const p = new CompletionProtocol('https://nas.example.com', notices, changes)
+  p.created('s', 'wss://nas.example.com/api/remote.mux')
+  p.sent('s', JSON.stringify({ type: 'open', streamId: 'c', endpoint: 'session/control' }))
+  const projections = Object.fromEntries(Array.from({ length: 300 }, (_, index) => [`s${index}`, {
+    values: { turnBoundary: { lastTurn: 1, openTurnStartSeq: index === 0 ? 0 : null } },
+  }]))
+  p.received('s', JSON.stringify({ type: 'item', streamId: 'c', value: { type: 'baseline', value: { projections } } }))
+  expect(changes).toHaveBeenLastCalledWith(1)
+  p.received('s', JSON.stringify({ type: 'item', streamId: 'c', value: {
+    type: 'projection', sessionId: 's0', key: 'turnBoundary', value: { lastTurn: 1, openTurnStartSeq: null },
+  } }))
+  expect(notices).toHaveBeenCalledExactlyOnceWith({ sessionId: 's0', turn: 1, outcome: 'ended', preview: '' })
+  expect(changes).toHaveBeenLastCalledWith(0)
+})
+
+it.each(['end', 'error', 'cancel', 'socket'])('drops unobservable running state when a control stream ends via %s', (type) => {
+  const changes = vi.fn()
+  const notice = vi.fn()
+  const p = new CompletionProtocol('https://nas.example.com', notice, changes)
+  p.created('s', 'wss://nas.example.com/api/remote.mux')
+  p.sent('s', JSON.stringify({ type: 'open', streamId: 'c', endpoint: 'session/control' }))
+  p.received('s', JSON.stringify({ type: 'item', streamId: 'c', value: { type: 'baseline', value: { projections: {
+    active: { values: { turnBoundary: { lastTurn: 1, openTurnStartSeq: 0 } } },
+  } } } }))
+  expect(changes).toHaveBeenLastCalledWith(1)
+  if (type === 'cancel') p.sent('s', JSON.stringify({ type, streamId: 'c' }))
+  else if (type === 'socket') p.closed('s')
+  else p.received('s', JSON.stringify({ type, streamId: 'c' }))
+  expect(changes).toHaveBeenLastCalledWith(undefined)
+  expect(notice).not.toHaveBeenCalled()
+})
+
+it('keeps a live follow stream observable after the control stream fails', () => {
+  const changes = vi.fn()
+  const notify = vi.fn()
+  const p = new CompletionProtocol('https://nas.example.com', notify, changes)
+  p.created('s', 'wss://nas.example.com/api/remote.mux')
+  p.sent('s', JSON.stringify({ type: 'open', streamId: 'c', endpoint: 'session/control' }))
+  p.sent('s', JSON.stringify({ type: 'open', streamId: 'f', endpoint: 'session/follow',
+    payload: { args: { request: { address: { kind: 'session', sessionId: 'active' } } } } }))
+  p.received('s', JSON.stringify({ type: 'item', streamId: 'f', value: { type: 'snapshot',
+    projections: { values: { turnBoundary: { lastTurn: 1, openTurnStartSeq: 0 } } } } }))
+  p.received('s', JSON.stringify({ type: 'error', streamId: 'c' }))
+  expect(changes).toHaveBeenLastCalledWith(1)
+  p.received('s', JSON.stringify({ type: 'item', streamId: 'f', value: { type: 'event',
+    event: { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } } } }))
+  expect(changes).toHaveBeenLastCalledWith(0)
+  expect(notify).toHaveBeenCalledOnce()
+})
