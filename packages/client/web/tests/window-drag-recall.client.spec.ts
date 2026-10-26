@@ -126,6 +126,92 @@ describe('window drag watcher installation', () => {
     stop()
   })
 
+  it('uses the native carrier platform without changing the document keyboard runtime', () => {
+    delete document.documentElement.dataset.platform
+    const seams = harness()
+    const element = row()
+    const stop = installWindowDragRecall({
+      document, platform: 'darwin', scheduleFrame: seams.scheduleFrame, watchBox: seams.watchBox,
+    })
+    try {
+      seams.runFrames()
+      expect(marked()).toBe(true)
+      expect(seams.watched()).toEqual([element])
+      expect(document.documentElement.dataset.platform).toBeUndefined()
+      settle(seams)
+      expect(marked()).toBe(false)
+    } finally { stop() }
+    expect(seams.disposedWatchers()).toBe(1)
+  })
+
+  it('does not collect macOS regions for an explicitly different carrier platform', () => {
+    const seams = harness()
+    row()
+    const stop = installWindowDragRecall({
+      document, platform: 'win32', scheduleFrame: seams.scheduleFrame, watchBox: seams.watchBox,
+    })
+    try {
+      expect(seams.frames()).toBe(0)
+      expect(seams.watched()).toEqual([])
+    } finally { stop() }
+  })
+
+  it('refreshes a selected title row while its marked parent remains fixed', async () => {
+    const seams = harness()
+    const header = row([0, 0, 800, 76])
+    const leading = document.createElement('div')
+    const title = document.createElement('div')
+    title.dataset.titleRow = ''
+    header.append(leading, title)
+    place(title, [30, 10, 770, 30])
+    const stop = installWindowDragRecall({
+      document, rowSelector: '[data-title-row]', scheduleFrame: seams.scheduleFrame, watchBox: seams.watchBox,
+    })
+    try {
+      settle(seams)
+      expect(seams.watched()).toEqual([title])
+      leading.textContent = 'A wider leading extension'
+      place(title, [150, 10, 650, 30])
+      seams.resize(title)
+      seams.runFrames()
+      expect(marked()).toBe(true)
+      expect(header.getBoundingClientRect()).toMatchObject({ x: 0, y: 0, width: 800, height: 76 })
+      settle(seams)
+      place(title, [170, 10, 650, 30])
+      title.style.transform = 'translateX(20px)'
+      await flushMutations()
+      seams.runFrames()
+      expect(marked()).toBe(true)
+      settle(seams)
+      expect(marked()).toBe(false)
+    } finally { stop() }
+    expect(seams.disposedWatchers()).toBe(1)
+  })
+
+  it('recollects after a selected descendant is detached without a resize report', async () => {
+    const seams = harness()
+    const header = row([0, 0, 800, 76])
+    const title = document.createElement('div')
+    title.dataset.titleRow = ''
+    header.append(title)
+    place(title, [0, 10, 800, 30])
+    const stop = installWindowDragRecall({
+      document, rowSelector: '[data-window-drag] > [data-title-row]',
+      scheduleFrame: seams.scheduleFrame, watchBox: seams.watchBox,
+    })
+    try {
+      settle(seams)
+      title.remove()
+      await flushMutations()
+      seams.runFrames()
+      expect(marked()).toBe(true)
+      expect(seams.watched()).toEqual([])
+      settle(seams)
+      expect(marked()).toBe(false)
+    } finally { stop() }
+    expect(seams.disposedWatchers()).toBe(1)
+  })
+
   it('collects the surface once when it is installed', () => {
     const seams = harness()
     const stop = installWindowDragRecall({

@@ -116,7 +116,7 @@ it('toggles the focused window and raises the retained conversation with compose
   state.remote.mockImplementationOnce(async (_url, _messages, own) => { own(window); return 'quit' })
   await import('../src/main.ts')
   await vi.waitFor(() => { expect(state.remote).toHaveBeenCalledOnce() })
-  expect(state.register).toHaveBeenCalledWith('CommandOrControl+Shift+E', expect.any(Function))
+  expect(state.register).toHaveBeenCalledWith('Control+Shift+E', expect.any(Function))
   const toggle = state.register.mock.calls[0]![1] as () => void
   toggle()
   expect(window.hide).toHaveBeenCalledOnce()
@@ -132,5 +132,5 @@ it('reports an occupied global shortcut while still opening the server', async (
   state.register.mockReturnValue(false)
   await import('../src/main.ts')
   await vi.waitFor(() => { expect(state.remote).toHaveBeenCalledOnce() })
-  expect(state.error).toHaveBeenCalledWith('DeepSeek Harness Companion', expect.stringContaining('Cmd/Ctrl+Shift+E'))
+  expect(state.error).toHaveBeenCalledWith('DeepSeek Harness Companion', expect.stringContaining('Ctrl+Shift+E'))
 })

@@ -43,7 +43,7 @@ else {
       else focus()
     }
     try {
-      if (!globalShortcut.register('CommandOrControl+Shift+E', toggle)) throw new Error('Shortcut unavailable')
+      if (!globalShortcut.register('Control+Shift+E', toggle)) throw new Error('Shortcut unavailable')
     } catch (_error) {
       dialog.showErrorBox(COMPANION_NAME, messages.shortcutUnavailable)
     }

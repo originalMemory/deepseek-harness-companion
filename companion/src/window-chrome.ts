@@ -1,4 +1,4 @@
-/** Official caption presentation with only same-origin appearance and menu IPC. */
+/** Platform-native captions with same-origin appearance and menu IPC. */
 import { fileURLToPath } from 'node:url'
 import { ipcMain, Menu, nativeTheme, type BrowserWindow, type BrowserWindowConstructorOptions, type MenuItemConstructorOptions } from 'electron'
 import { COMPANION_NAME } from './identity.ts'
@@ -10,7 +10,7 @@ const fullscreenChannel = 'dsh-desktop:window-fullscreen'
 const fallbackFill = (): string => nativeTheme.shouldUseDarkColors ? '#1b1b1c' : '#f9fafb'
 
 /**
- * Resolve the official primary-window caption options for this OS.
+ * Resolve native macOS chrome or the integrated Windows caption for this OS.
  * @returns Native caption settings for the current OS.
  */
 export function remoteWindowChrome(): BrowserWindowConstructorOptions {

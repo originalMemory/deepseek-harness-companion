@@ -66,3 +66,14 @@ it('uses the official native caption geometry and rejects unowned frames before 
     expect(ipcMain.listenerCount('dsh-desktop:windows-appearance')).toBe(0)
   } finally { vi.restoreAllMocks() }
 })
+
+
+it('uses the embedded macOS caption geometry', () => {
+  vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+  try {
+    const chrome = remoteWindowChrome()
+    expect(chrome.titleBarStyle).toBe('hiddenInset')
+    expect(chrome.trafficLightPosition).toEqual({ x: 16, y: 18 })
+    expect(chrome.titleBarOverlay).toBeUndefined()
+  } finally { vi.restoreAllMocks() }
+})
