@@ -41,12 +41,21 @@ it('uses the official native caption geometry and rejects unowned frames before 
     const change = vi.fn()
     const wallpaper = vi.fn()
     installWindowChrome(window, 'https://nas.example.com', companionMessages('en'), change, wallpaper)
-    window.webContents.emit('context-menu')
+    const nativeEvent = { preventDefault: vi.fn() }
+    window.emit('system-context-menu', nativeEvent)
+    expect(nativeEvent.preventDefault).toHaveBeenCalledOnce()
+    expect(window.webContents.listenerCount('context-menu')).toBe(0)
     expect(native.items.slice(0, 2).map(item => item.label)).toEqual(['Change server…', '背景轮播…'])
     ;(native.items[1]!.click as () => void)()
     expect(wallpaper).toHaveBeenCalledOnce()
     const handler = native.handlers.get('dsh-desktop:windows-menu')!
     const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame } as IpcMainInvokeEvent
+    const unchanged = native.items
+    ipcMain.emit('companion:context-menu', { ...event, sender: {} }, 5, 5)
+    ipcMain.emit('companion:context-menu', event, NaN, 5)
+    expect(native.items).toBe(unchanged)
+    ipcMain.emit('companion:context-menu', event, 5, 5)
+    expect(native.items[0]!.label).toBe('Change server…')
     for (const invalid of [
       { ...event, senderFrame: { url: 'https://nas.example.com/' } },
       { ...event, sender: {} },
@@ -67,6 +76,7 @@ it('uses the official native caption geometry and rejects unowned frames before 
     window.emit('closed')
     expect(native.handlers.size).toBe(0)
     expect(ipcMain.listenerCount('dsh-desktop:windows-appearance')).toBe(0)
+    expect(ipcMain.listenerCount('companion:context-menu')).toBe(0)
   } finally { vi.restoreAllMocks() }
 })
 

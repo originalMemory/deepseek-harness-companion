@@ -7,6 +7,7 @@ import type { CompanionMessages } from './locale.ts'
 const appearanceChannel = 'dsh-desktop:windows-appearance'
 const menuChannel = 'dsh-desktop:windows-menu'
 const fullscreenChannel = 'dsh-desktop:window-fullscreen'
+const contextMenuChannel = 'companion:context-menu'
 const fallbackFill = (): string => nativeTheme.shouldUseDarkColors ? '#1b1b1c' : '#f9fafb'
 
 /**
@@ -55,10 +56,17 @@ export function installWindowChrome(window: BrowserWindow, origin: string, messa
     { label: COMPANION_NAME, submenu: applicationItems() },
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
   ]))
-  // Recovery stays available before the remote application mounts its caption menu.
-  window.webContents.on('context-menu', () => {
+  window.on('system-context-menu', (event) => {
+    event.preventDefault()
     Menu.buildFromTemplate(applicationItems()).popup({ window })
   })
+  const contextMenu = (event: Electron.IpcMainEvent, x: unknown, y: unknown): void => {
+    if (!trusted(event) || typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)
+      || x < 0 || y < 0 || x > 100_000 || y > 100_000) return
+    const zoom = window.webContents.getZoomFactor()
+    Menu.buildFromTemplate(applicationItems()).popup({ window, x: Math.round(x * zoom), y: Math.round(y * zoom) })
+  }
+  ipcMain.on(contextMenuChannel, contextMenu)
   const appearance = (event: Electron.IpcMainEvent, _locale: unknown, color: unknown, symbolColor: unknown): void => {
     if (!trusted(event)) return
     const validColor = (value: unknown): value is string => typeof value === 'string' && /^(?:#[\da-f]{3,8}|rgba?\([\d.,%\s]+\))$/iu.test(value)
@@ -100,6 +108,7 @@ export function installWindowChrome(window: BrowserWindow, origin: string, messa
     window.on('show', backdrop)
   }
   window.once('closed', () => {
+    ipcMain.removeListener(contextMenuChannel, contextMenu)
     if (process.platform === 'win32') { ipcMain.removeListener(appearanceChannel, appearance); ipcMain.removeHandler(menuChannel) }
     Menu.setApplicationMenu(null)
   })

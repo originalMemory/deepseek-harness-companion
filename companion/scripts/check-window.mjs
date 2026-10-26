@@ -19,6 +19,25 @@ const detector = shortcutFile.statements.find(node => ts.isFunctionDeclaration(n
 assert.ok(detector)
 const detectorScript = ts.transpileModule(detector.getText(shortcutFile), { compilerOptions: { module: ts.ModuleKind.ESNext } })
   .outputText.replace('export ', '')
+const menuRoutingScript = `(()=>{
+  let webMenus=0;
+  const webMenu=()=>{webMenus++};window.addEventListener('contextmenu',webMenu);
+  const probe=document.createElement('div');
+  probe.style.cssText='position:fixed;left:200px;top:100px;width:240px;height:60px;-webkit-app-region:drag';
+  probe.innerHTML='<button style="width:40px;height:40px">Control</button><input style="width:40px;height:40px;box-sizing:border-box">';
+  document.getElementById('root').append(probe);
+  const rightClick=(x,y)=>{const event=new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:x,clientY:y});document.elementFromPoint(x,y).dispatchEvent(event);return event.defaultPrevented};
+  const drag=rightClick(300,120);
+  const button=rightClick(210,110);
+  const input=rightClick(260,110);
+  const content=rightClick(700,200);
+  const overlay=document.createElement('div');overlay.setAttribute('role','dialog');
+  overlay.style.cssText='position:fixed;left:200px;top:100px;width:240px;height:60px';
+  document.getElementById('root').append(overlay);
+  const covered=rightClick(300,120);
+  overlay.remove();probe.remove();window.removeEventListener('contextmenu',webMenu);
+  return {drag,button,input,content,covered,webMenus};
+})()`
 const root = await mkdtemp(join(tmpdir(), 'companion-chrome-'))
 const result = join(root, 'result.json')
 const server = createServer((request, response) => {
@@ -42,7 +61,7 @@ try {
   const origin = `http://127.0.0.1:${address.port}`
   await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', main: 'main.mjs' }))
   await writeFile(join(root, 'main.mjs'), `
-    import {app,dialog,screen} from 'electron';
+    import {app,dialog,screen,Menu} from 'electron';
     import {writeFileSync} from 'node:fs';
     import {openRemoteWindow} from ${JSON.stringify(pathToFileURL(join(lib, 'connection-window.js')).href)};
     import {companionMessages} from ${JSON.stringify(pathToFileURL(join(lib, 'locale.js')).href)};
@@ -53,6 +72,9 @@ try {
     let win;let restored;let restoredClosed;
     const loaded=Promise.withResolvers();
     const errors=[];
+    let shellMenus=0;
+    const firstShellMenu=Promise.withResolvers();
+    Menu.prototype.popup=function(options){shellMenus++;firstShellMenu.resolve();options?.callback?.()};
     const closed=openRemoteWindow(${JSON.stringify(origin + '/auth')},companionMessages('en'),window=>{
       win=window;win.hide();win.webContents.setBackgroundThrottling(false);
       rememberWindowBounds(window,app.getPath('userData'),companionMessages('en'));
@@ -63,7 +85,7 @@ try {
     try {
       await loaded.promise;
       console.log('remote page loaded');
-      const recovery=win.webContents.listenerCount('context-menu')>0
+      const recovery=win.listenerCount('system-context-menu')>0 && win.webContents.listenerCount('context-menu')===0
         && await win.webContents.executeJavaScript('document.querySelector("[data-windows-menu]")===null');
       await win.loadURL(${JSON.stringify(origin + '/ready')});
       win.webContents.send('companion:focus-composer');
@@ -72,9 +94,11 @@ try {
       const clipboard=await win.webContents.executeJavaScript('(async()=>({write:(await navigator.permissions.query({name:"clipboard-write"})).state,read:(await navigator.permissions.query({name:"clipboard-read"})).state}))()');
       console.log('clipboard checked');
       // The macOS drag watcher pulses no-drag while it collects initial geometry.
-      await win.webContents.executeJavaScript('new Promise(resolve=>{let frames=0;requestAnimationFrame(function tick(){if(++frames===4)resolve();else requestAnimationFrame(tick)})})');
+      if(process.platform==='darwin') await win.webContents.executeJavaScript('new Promise(resolve=>{let frames=0;requestAnimationFrame(function tick(){if(++frames===4)resolve();else requestAnimationFrame(tick)})})');
       const data=await win.webContents.executeJavaScript(
         '(()=>({regions:Array.from(document.querySelectorAll("*")).flatMap(element=>{const region=getComputedStyle(element).webkitAppRegion;if(region!=="drag"&&region!=="no-drag")return [];const rect=element.getBoundingClientRect();return [{x:rect.x,y:rect.y,width:rect.width,height:rect.height,draggable:region==="drag"}]}),viewportWidth:innerWidth,dragRow:getComputedStyle(document.querySelector("[data-window-drag]")).webkitAppRegion,stripRegion:getComputedStyle(document.querySelector("[data-title-row]")).webkitAppRegion,stripHeight:getComputedStyle(document.querySelector("[data-title-row]")).height,stripTop:document.querySelector("[data-title-row]").getBoundingClientRect().top,backdropRegion:getComputedStyle(document.querySelector("[data-backdrop]")).webkitAppRegion,tabsRegion:getComputedStyle(document.querySelector("[role=tablist]")).webkitAppRegion,portalRegion:getComputedStyle(document.querySelector("[data-shell-overlay]")).webkitAppRegion,clearance:{top:document.getElementById("root").getBoundingClientRect().top,height:document.getElementById("root").getBoundingClientRect().height,viewport:innerHeight},controls:Array.from(document.querySelectorAll("[data-caption-control]")).map(button=>({region:getComputedStyle(button).webkitAppRegion,top:button.getBoundingClientRect().top})),bandContent:getComputedStyle(document.body,"::before").content,platform:document.documentElement.dataset.companionPlatform,desktopMarker:document.documentElement.dataset.platform??null,caption:document.documentElement.hasAttribute("data-windows-titlebar"),menus:Array.from(document.querySelector("[data-windows-menu]")?.shadowRoot.querySelectorAll("button")??[]).map(b=>b.textContent),focused:document.activeElement?.hasAttribute("data-composer-input"),draft:document.querySelector("[data-composer-input]").textContent,session:document.querySelector("[data-session]").dataset.session,node:typeof window.require,host:typeof window.dshDesktop}))()');
+      const routing=await win.webContents.executeJavaScript(${JSON.stringify(menuRoutingScript)});
+      await firstShellMenu.promise;
       const nativeCaption=win.getContentBounds().y-win.getBounds().y;
       const area=screen.getPrimaryDisplay().workArea;
       win.setBounds({x:area.x,y:area.y,width:Math.max(520,Math.min(900,area.width)),height:Math.max(600,Math.min(700,area.height))});
@@ -83,7 +107,7 @@ try {
       const saved=loadWindowBounds(app.getPath('userData'),companionMessages('en'));
       restoredClosed=openRemoteWindow(${JSON.stringify(origin + '/ready')},companionMessages('en'),window=>{restored=window;window.hide()},undefined,saved);
       const actual=restored.getNormalBounds();
-      writeFileSync(${JSON.stringify(result)},JSON.stringify({data,errors,environment,clipboard,recovery,nativeCaption,windowState:{expected,saved,actual}}));
+      writeFileSync(${JSON.stringify(result)},JSON.stringify({data,errors,environment,clipboard,recovery,routing,shellMenus,nativeCaption,windowState:{expected,saved,actual}}));
     } finally {if(!win.isDestroyed())win.destroy();await closed;if(restored&&!restored.isDestroyed())restored.destroy();if(restoredClosed)await restoredClosed;app.quit()}
     }).catch(error=>{console.error(error);app.exit(1)});
   `)
@@ -100,7 +124,7 @@ try {
     child.once('error', error => { clearTimeout(timeout); reject(error) })
     child.once('close', code => { clearTimeout(timeout); code === 0 ? resolve() : reject(new Error(`Electron exit ${code}: ${diagnostics}`)) })
   })
-  const { data, errors, environment, clipboard, recovery, nativeCaption, windowState } = JSON.parse(await readFile(result, 'utf8'))
+  const { data, errors, environment, clipboard, recovery, routing, shellMenus, nativeCaption, windowState } = JSON.parse(await readFile(result, 'utf8'))
   assert.deepEqual(errors, [])
   assert.deepEqual(windowState.actual, windowState.expected)
   assert.deepEqual(JSON.parse(await readFile(join(root, 'profile', 'window-state.json'), 'utf8')), windowState.expected)
@@ -125,6 +149,8 @@ try {
   }
   assert.equal(environment.runtime, 'web')
   assert.equal(recovery, true)
+  assert.deepEqual(routing, { drag: true, button: false, input: false, content: false, covered: false, webMenus: 4 })
+  assert.equal(shellMenus, 1)
   if (clipboard.write !== 'granted') console.error(diagnostics)
   assert.equal(clipboard.write, 'granted')
   assert.equal(clipboard.read, 'denied')
