@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
-import { beforeEach, afterEach, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import type { MenuItemConstructorOptions, NativeImage, Tray } from 'electron'
 import { CompanionTray } from '../src/tray.ts'
 import { companionMessages } from '../src/locale.ts'
@@ -28,13 +28,14 @@ vi.mock('electron', () => ({
 }))
 
 beforeEach(() => { vi.clearAllMocks(); native.trays.length = 0; native.images.length = 0; native.fail = false })
-afterEach(() => { vi.restoreAllMocks() })
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 it('uses official Windows artwork and the original open/quit tray interaction', () => {
   const open = vi.fn()
   const quit = vi.fn()
   const messages = companionMessages('en')
   const owner = new CompanionTray(messages, open, quit, 'win32')
+  onTestFinished(() => owner.dispose())
   const tray = native.trays[0] as Tray
   tray.emit('click')
   expect(open).toHaveBeenCalledOnce()
@@ -56,18 +57,35 @@ it('uses official Windows artwork and the original open/quit tray interaction', 
   expect(owner.available).toBe(false)
 })
 
-it('uses a macOS template whale and a visible running dot without an animation timer', () => {
+it('blinks while background work runs, retains unread completions, and clears them on focus', () => {
+  vi.useFakeTimers()
   const owner = new CompanionTray(companionMessages('zh-CN'), vi.fn(), vi.fn(), 'darwin')
   const template = native.images[0] as NativeImage
   expect(template.setTemplateImage).toHaveBeenCalledWith(true)
+  onTestFinished(() => owner.dispose())
   const tray = native.trays[0] as Tray
   owner.setRunning(1)
-  expect(tray.setTitle).toHaveBeenLastCalledWith('●')
+  expect(tray.setTitle).toHaveBeenLastCalledWith('●', { fontType: 'monospaced' })
   expect(tray.setToolTip).toHaveBeenLastCalledWith('DeepSeek Harness Companion — 正在回复（1）')
+  vi.advanceTimersByTime(800)
+  expect(tray.setTitle).toHaveBeenLastCalledWith(' ', { fontType: 'monospaced' })
+  vi.advanceTimersByTime(800)
+  expect(tray.setTitle).toHaveBeenLastCalledWith('●', { fontType: 'monospaced' })
+  owner.markUnread()
+  owner.setRunning(0)
+  expect(tray.setTitle).toHaveBeenLastCalledWith('●', { fontType: 'monospaced' })
+  expect(vi.getTimerCount()).toBe(0)
   owner.setRunning(undefined)
-  expect(tray.setTitle).toHaveBeenLastCalledWith('')
+  expect(tray.setTitle).toHaveBeenLastCalledWith('●', { fontType: 'monospaced' })
+  owner.setFocused(true)
+  expect(tray.setTitle).toHaveBeenLastCalledWith('', { fontType: 'monospaced' })
   expect(tray.setToolTip).toHaveBeenLastCalledWith('DeepSeek Harness Companion — 等待会话状态')
+  owner.setRunning(2)
+  expect(vi.getTimerCount()).toBe(0)
+  owner.setFocused(false)
+  expect(vi.getTimerCount()).toBe(1)
   owner.dispose()
+  expect(vi.getTimerCount()).toBe(0)
 })
 
 it('restores window access and disables close-to-tray if native status updates fail', () => {
@@ -89,4 +107,27 @@ it('allows explicit quit through close-to-tray and resumes if the page cancels u
   quitting = false
   expect(owner.available).toBe(true)
   owner.dispose()
+})
+
+it('blinks the Windows badge and keeps it unread until the remote window regains focus', () => {
+  vi.useFakeTimers()
+  const owner = new CompanionTray(companionMessages('zh-CN'), vi.fn(), vi.fn(), 'win32')
+  onTestFinished(() => owner.dispose())
+  const tray = native.trays[0] as Tray
+  owner.setRunning(1)
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[1])
+  vi.advanceTimersByTime(800)
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[0])
+  vi.advanceTimersByTime(800)
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[1])
+  owner.markUnread()
+  owner.setRunning(0)
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[1])
+  expect(vi.getTimerCount()).toBe(0)
+  owner.setFocused(true)
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[0])
+  owner.setFocused(false)
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[0])
+  owner.dispose()
+  expect(vi.getTimerCount()).toBe(0)
 })

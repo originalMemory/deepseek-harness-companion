@@ -9,6 +9,11 @@ export class CompanionTray {
   private tray: Tray | undefined
   private readonly idle: NativeImage
   private readonly busy: NativeImage
+  private running: number | undefined
+  private focused = false
+  private unread = false
+  private lit = true
+  private animation: ReturnType<typeof setInterval> | undefined
 
   /**
    * @param messages - Localized menu and activity copy.
@@ -51,15 +56,47 @@ export class CompanionTray {
    * @param count - Observed running turns, or undefined while disconnected or awaiting a baseline.
    */
   setRunning(count: number | undefined): void {
+    this.running = count
+    this.refresh()
+  }
+
+  /** Update remote-window attention; returning to a visible focused window clears unread replies.
+   * @param focused - Whether the remote window is visible and focused.
+   */
+  setFocused(focused: boolean): void {
+    this.focused = focused
+    if (focused) this.unread = false
+    this.refresh()
+  }
+
+  /** Retain a background completion until the user returns to the remote window. */
+  markUnread(): void {
+    if (this.focused) return
+    this.unread = true
+    this.refresh()
+  }
+
+  private refresh(): void {
+    clearInterval(this.animation)
+    this.animation = undefined
+    this.lit = true
+    this.paint()
+    if (this.tray !== undefined && !this.focused && this.running !== undefined && this.running > 0) {
+      this.animation = setInterval(() => { this.lit = !this.lit; this.paint() }, 800)
+    }
+  }
+
+  private paint(): void {
     const tray = this.tray
     if (tray === undefined) return
     try {
-      // ponytail: a static badge avoids a tray animation timer and its teardown.
-      if (this.platform === 'darwin') tray.setTitle(count !== undefined && count > 0 ? '●' : '')
-      else tray.setImage(count !== undefined && count > 0 ? this.busy : this.idle)
-      const status = count === undefined ? this.messages.activityUnknown : count > 0
-        ? this.messages.activityRunning.replace('{count}', String(count)) : this.messages.activityIdle
-      tray.setToolTip(`${COMPANION_NAME} — ${status}`)
+      const working = this.running !== undefined && this.running > 0
+      const badge = !this.focused && (working ? this.lit : this.unread)
+      if (this.platform === 'darwin') tray.setTitle(badge ? '●' : !this.focused && working ? ' ' : '', { fontType: 'monospaced' })
+      else tray.setImage(badge ? this.busy : this.idle)
+      const status = this.running === undefined ? this.messages.activityUnknown : working
+        ? this.messages.activityRunning.replace('{count}', String(this.running)) : this.messages.activityIdle
+      tray.setToolTip(`${COMPANION_NAME} — ${status}${this.unread ? ' · 有未读回复' : ''}`)
     } catch (_error) {
       this.dispose()
       this.open()
@@ -70,6 +107,8 @@ export class CompanionTray {
 
   /** Remove the native icon after window teardown, or after a tray failure. */
   dispose(): void {
+    clearInterval(this.animation)
+    this.animation = undefined
     const tray = this.tray
     this.tray = undefined
     tray?.destroy()

@@ -55,7 +55,8 @@ afterEach(() => { vi.restoreAllMocks() })
 function setup(language = 'en') {
   const window = new BrowserWindow()
   const messages = companionMessages(language)
-  const notifications = new CompletionNotifications(window, 'https://nas.example.com', messages)
+  const unread = vi.fn()
+  const notifications = new CompletionNotifications(window, 'https://nas.example.com', messages, () => {}, unread)
   const cdp = (method: string, value: unknown) => { window.webContents.debugger.emit('message', {}, method, value) }
   const frame = (direction: 'Sent' | 'Received', message: unknown) => {
     cdp(`Network.webSocketFrame${direction}`, { requestId: 'socket', response: { opcode: 1, payloadData: JSON.stringify(message) } })
@@ -74,7 +75,7 @@ function setup(language = 'en') {
     event('turn/start', { turn })
     event('turn/end', { turn, reason: { kind } })
   }
-  return { window, notifications, cdp, event, finish, start, messages, toasts: native.toasts as Notification[] }
+  return { window, notifications, cdp, event, finish, start, messages, unread, toasts: native.toasts as Notification[] }
 }
 
 it('enables observation before navigation and coalesces concurrent readiness waits', async () => {
@@ -95,6 +96,7 @@ it('shows a background native notification once and focuses the window when clic
   await s.notifications.ready
   s.finish(1)
   s.event('turn/end', { turn: 1, reason: { kind: 'completed' } })
+  expect(s.unread).toHaveBeenCalledOnce()
   expect(s.toasts).toHaveLength(1)
   expect(s.toasts[0]!.body).toBe(s.messages.replyCompleted)
   expect(s.toasts[0]!.show).toHaveBeenCalledOnce()
@@ -112,6 +114,7 @@ it('suppresses focused-window reminders and known cancellation', async () => {
   native.focused = false
   s.finish(2, 'aborted')
   expect(s.toasts).toHaveLength(0)
+  expect(s.unread).not.toHaveBeenCalled()
   s.notifications.dispose()
 })
 
@@ -124,6 +127,7 @@ it('reports native notification failure once without making the turn successful'
   native.supported = false
   s.finish(2)
   expect(native.error).toHaveBeenCalledTimes(1)
+  expect(s.unread).toHaveBeenCalledTimes(2)
   s.notifications.dispose()
 })
 

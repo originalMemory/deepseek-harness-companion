@@ -120,7 +120,7 @@ export async function promptRemoteAddress(
  */
 export function openRemoteWindow(
   url: string, messages: CompanionMessages, ownWindow: (window: BrowserWindow) => void,
-  tray?: Pick<CompanionTray, 'available' | 'setRunning'>, bounds?: Rectangle,
+  tray?: Pick<CompanionTray, 'available' | 'setRunning' | 'setFocused' | 'markUnread'>, bounds?: Rectangle,
 ): Promise<'change' | 'quit'> {
   const origin = new URL(url).origin
   const storage = session.fromPartition('persist:companion')
@@ -140,6 +140,9 @@ export function openRemoteWindow(
     !window.isDestroyed() && contents === window.webContents && permission === 'clipboard-sanitized-write'
     && details.isMainFrame && selectedOrigin(requestingOrigin))
   ownWindow(window)
+  const attention = (): void => { tray?.setFocused(!window.isDestroyed() && window.isVisible() && window.isFocused()) }
+  window.on('focus', attention).on('blur', attention).on('show', attention).on('hide', attention).on('minimize', attention).on('restore', attention)
+  attention()
   return new Promise((resolve) => {
     let outcome: 'change' | 'quit' = 'quit'
     let forceClose = false
@@ -148,9 +151,10 @@ export function openRemoteWindow(
     window.on('close', (event) => {
       if (!forceClose && tray?.available) { event.preventDefault(); hideCompanionWindow(window) }
     })
-    const notifications = new CompletionNotifications(window, origin, messages, count => { tray?.setRunning(count) })
+    const notifications = new CompletionNotifications(window, origin, messages, count => { tray?.setRunning(count) }, () => { tray?.markUnread() })
     window.once('closed', () => {
       notifications.dispose()
+      tray?.setFocused(false)
       storage.flushStorageData()
       resolve(outcome)
     })

@@ -57,6 +57,8 @@ class FakeWindow extends EventEmitter {
   })
   show = vi.fn()
   setMenu = vi.fn()
+  isVisible = vi.fn(() => true)
+  isFocused = vi.fn(() => true)
   isDestroyed = () => this.destroyed
   close = (): void => {
     const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true } }
@@ -235,8 +237,15 @@ it('starts a renderer before awaiting network observation, then opens the server
 
 it('hides a remote window to the tray, while server changes and explicit exits still close it', async () => {
   const { window } = await fixture()
-  const tray = { available: true, setRunning: vi.fn() } satisfies Pick<CompanionTray, 'available' | 'setRunning'>
+  const tray = { available: true, setRunning: vi.fn(), setFocused: vi.fn(), markUnread: vi.fn() } satisfies Pick<CompanionTray, 'available' | 'setRunning' | 'setFocused' | 'markUnread'>
   const result = openRemoteWindow('https://nas.example.com/', locale.messages, vi.fn(), tray)
+  expect(tray.setFocused).toHaveBeenLastCalledWith(true)
+  window.isFocused.mockReturnValue(false)
+  window.emit('blur')
+  expect(tray.setFocused).toHaveBeenLastCalledWith(false)
+  window.isFocused.mockReturnValue(true)
+  window.emit('focus')
+  expect(tray.setFocused).toHaveBeenLastCalledWith(true)
   const close = { preventDefault: vi.fn() }
   window.emit('close', close)
   expect(close.preventDefault).toHaveBeenCalledOnce()
