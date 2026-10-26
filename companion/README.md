@@ -52,6 +52,8 @@ Windows uses the official integrated caption and Application/Edit menu. macOS re
 
 `Ctrl+Shift+E` hides a focused visible window, or restores and focuses it otherwise. Raising it keeps the current conversation and draft, and focuses the visible editable chat composer when present; other pages remain on their current page. No dedicated conversation is created. An unavailable global shortcut is reported; check whether nanobot or another application already uses it. Tray activation and a second launch also focus the current composer.
 
+Normal window position and size are saved to `window-state.json` when the remote window hides or closes and restored on its next launch. Maximized and fullscreen dimensions do not replace the normal bounds. Restored bounds are fitted to the current display work area. The first-use server-address form does not change these preferences; storage failures are reported and invalid saved data uses the default layout.
+
 After building, `node companion/scripts/check-window.mjs` checks the shipped remote-window entry with a temporary profile and local fixture pages: Web shortcut detection, authentication-page recovery, clipboard permissions, caption menu and composer focus.
 
 <a id="notifications"></a>

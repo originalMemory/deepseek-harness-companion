@@ -3,6 +3,7 @@ import { app, dialog, globalShortcut, type BrowserWindow } from 'electron'
 import { COMPANION_NAME, initializeCompanionIdentity } from './identity.ts'
 import { companionMessages } from './locale.ts'
 import { openRemoteWindow, promptRemoteAddress, savedRemoteOrigin } from './connection-window.ts'
+import { loadWindowBounds, rememberWindowBounds } from './window-state.ts'
 import { CompanionTray } from './tray.ts'
 import { hideCompanionWindow } from './window-chrome.ts'
 
@@ -61,7 +62,10 @@ else {
       if (quitting) return
       url ??= await promptRemoteAddress(messages, userData, ownWindow)
       if (quitting) return
-      if (url === undefined || await openRemoteWindow(url, messages, ownWindow, tray) === 'quit') { app.quit(); return }
+      if (url === undefined || await openRemoteWindow(url, messages, next => {
+        ownWindow(next)
+        rememberWindowBounds(next, userData, messages)
+      }, tray, loadWindowBounds(userData, messages)) === 'quit') { app.quit(); return }
       url = undefined
     }
   }).catch(() => {

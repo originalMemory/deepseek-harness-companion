@@ -1,7 +1,7 @@
 /** Remote-only address entry and sandboxed Web windows; no Harness Host is imported. */
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { BrowserWindow, dialog, session, shell } from 'electron'
+import { BrowserWindow, dialog, session, shell, type Rectangle } from 'electron'
 import { COMPANION_NAME } from './identity.ts'
 import type { CompanionMessages } from './locale.ts'
 import { CompletionNotifications } from './completion-notifications.ts'
@@ -114,16 +114,17 @@ export async function promptRemoteAddress(
  * @param messages - Localized shell copy.
  * @param ownWindow - Registers the window for process activation and identity.
  * @param tray - Available application tray; omission preserves close-to-quit behavior.
+ * @param bounds - Saved normal bounds; omission uses the default size and OS placement.
  * @returns Whether to change server or quit; ordinary close hides to an available tray without stopping observation.
  */
 export function openRemoteWindow(
   url: string, messages: CompanionMessages, ownWindow: (window: BrowserWindow) => void,
-  tray?: Pick<CompanionTray, 'available' | 'setRunning'>,
+  tray?: Pick<CompanionTray, 'available' | 'setRunning'>, bounds?: Rectangle,
 ): Promise<'change' | 'quit'> {
   const origin = new URL(url).origin
   const storage = session.fromPartition('persist:companion')
   const window = new BrowserWindow({
-    width: 1280, height: 820, minWidth: 520, minHeight: 600, title: COMPANION_NAME,
+    width: 1280, height: 820, ...bounds, minWidth: 520, minHeight: 600, title: COMPANION_NAME,
     ...remoteWindowChrome(),
     webPreferences: { preload: captionPreload, session: storage, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   })

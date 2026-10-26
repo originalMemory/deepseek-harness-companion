@@ -42,18 +42,20 @@ try {
   const origin = `http://127.0.0.1:${address.port}`
   await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', main: 'main.mjs' }))
   await writeFile(join(root, 'main.mjs'), `
-    import {app,dialog} from 'electron';
+    import {app,dialog,screen} from 'electron';
     import {writeFileSync} from 'node:fs';
     import {openRemoteWindow} from ${JSON.stringify(pathToFileURL(join(lib, 'connection-window.js')).href)};
     import {companionMessages} from ${JSON.stringify(pathToFileURL(join(lib, 'locale.js')).href)};
+    import {loadWindowBounds,rememberWindowBounds} from ${JSON.stringify(pathToFileURL(join(lib, 'window-state.js')).href)};
     app.setPath('userData',${JSON.stringify(join(root, 'profile'))});
     dialog.showErrorBox=(title,message)=>{throw new Error(title+': '+message)};
     app.whenReady().then(async()=>{
-    let win;
+    let win;let restored;let restoredClosed;
     const loaded=Promise.withResolvers();
     const errors=[];
     const closed=openRemoteWindow(${JSON.stringify(origin + '/auth')},companionMessages('en'),window=>{
       win=window;win.hide();win.webContents.setBackgroundThrottling(false);
+      rememberWindowBounds(window,app.getPath('userData'),companionMessages('en'));
       win.webContents.on('preload-error',(_event,_path,error)=>errors.push(String(error)));
       win.webContents.on('did-finish-load',()=>{if(win.webContents.getURL().startsWith(${JSON.stringify(origin)}))loaded.resolve()});
     });
@@ -71,8 +73,16 @@ try {
       console.log('clipboard checked');
       const data=await win.webContents.executeJavaScript(
         '(()=>({regions:Array.from(document.querySelectorAll("*")).flatMap(element=>{const region=getComputedStyle(element).webkitAppRegion;if(region!=="drag"&&region!=="no-drag")return [];const rect=element.getBoundingClientRect();return [{x:rect.x,y:rect.y,width:rect.width,height:rect.height,draggable:region==="drag"}]}),viewportWidth:innerWidth,dragRow:getComputedStyle(document.querySelector("[data-window-drag]")).webkitAppRegion,stripRegion:getComputedStyle(document.querySelector("[data-title-row]")).webkitAppRegion,stripHeight:getComputedStyle(document.querySelector("[data-title-row]")).height,stripTop:document.querySelector("[data-title-row]").getBoundingClientRect().top,backdropRegion:getComputedStyle(document.querySelector("[data-backdrop]")).webkitAppRegion,tabsRegion:getComputedStyle(document.querySelector("[role=tablist]")).webkitAppRegion,portalRegion:getComputedStyle(document.querySelector("[data-shell-overlay]")).webkitAppRegion,clearance:{top:document.getElementById("root").getBoundingClientRect().top,height:document.getElementById("root").getBoundingClientRect().height,viewport:innerHeight},controls:Array.from(document.querySelectorAll("[data-caption-control]")).map(button=>({region:getComputedStyle(button).webkitAppRegion,top:button.getBoundingClientRect().top})),bandContent:getComputedStyle(document.body,"::before").content,platform:document.documentElement.dataset.companionPlatform,desktopMarker:document.documentElement.dataset.platform??null,caption:document.documentElement.hasAttribute("data-windows-titlebar"),menus:Array.from(document.querySelector("[data-windows-menu]")?.shadowRoot.querySelectorAll("button")??[]).map(b=>b.textContent),focused:document.activeElement?.hasAttribute("data-composer-input"),draft:document.querySelector("[data-composer-input]").textContent,session:document.querySelector("[data-session]").dataset.session,node:typeof window.require,host:typeof window.dshDesktop}))()');
-      writeFileSync(${JSON.stringify(result)},JSON.stringify({data,errors,environment,clipboard,recovery,nativeCaption:win.getContentBounds().y-win.getBounds().y}));
-    } finally {win.destroy();await closed;app.quit()}
+      const nativeCaption=win.getContentBounds().y-win.getBounds().y;
+      const area=screen.getPrimaryDisplay().workArea;
+      win.setBounds({x:area.x,y:area.y,width:Math.max(520,Math.min(900,area.width)),height:Math.max(600,Math.min(700,area.height))});
+      const expected=win.getNormalBounds();
+      win.close();await closed;
+      const saved=loadWindowBounds(app.getPath('userData'),companionMessages('en'));
+      restoredClosed=openRemoteWindow(${JSON.stringify(origin + '/ready')},companionMessages('en'),window=>{restored=window;window.hide()},undefined,saved);
+      const actual=restored.getNormalBounds();
+      writeFileSync(${JSON.stringify(result)},JSON.stringify({data,errors,environment,clipboard,recovery,nativeCaption,windowState:{expected,saved,actual}}));
+    } finally {if(!win.isDestroyed())win.destroy();await closed;if(restored&&!restored.isDestroyed())restored.destroy();if(restoredClosed)await restoredClosed;app.quit()}
     }).catch(error=>{console.error(error);app.exit(1)});
   `)
   const env = { ...process.env }
@@ -88,8 +98,10 @@ try {
     child.once('error', error => { clearTimeout(timeout); reject(error) })
     child.once('close', code => { clearTimeout(timeout); code === 0 ? resolve() : reject(new Error(`Electron exit ${code}: ${diagnostics}`)) })
   })
-  const { data, errors, environment, clipboard, recovery, nativeCaption } = JSON.parse(await readFile(result, 'utf8'))
+  const { data, errors, environment, clipboard, recovery, nativeCaption, windowState } = JSON.parse(await readFile(result, 'utf8'))
   assert.deepEqual(errors, [])
+  assert.deepEqual(windowState.actual, windowState.expected)
+  assert.deepEqual(JSON.parse(await readFile(join(root, 'profile', 'window-state.json'), 'utf8')), windowState.expected)
   assert.equal(data.platform, process.platform)
   assert.equal(data.desktopMarker, null)
   if (process.platform === 'darwin') {
@@ -120,7 +132,7 @@ try {
   assert.equal(data.session, 'retained')
   assert.equal(data.node, 'undefined')
   assert.equal(data.host, 'undefined')
-  console.log('PASS: shipped remote window, Web shortcut runtime, embedded caption, conversation title-row drag strip, decorative backdrop exclusion, interactive exclusions, unshifted Web layout, clipboard write allowed/read denied, caption/menu, retained conversation/draft and composer focus, no Node or Host API.')
+  console.log('PASS: shipped remote window, Web shortcut runtime, embedded caption, conversation title-row drag strip, decorative backdrop exclusion, interactive exclusions, unshifted Web layout, persisted window bounds after reopening, clipboard write allowed/read denied, caption/menu, retained conversation/draft and composer focus, no Node or Host API.')
 } finally {
   if (child?.pid !== undefined && child.exitCode === null && child.signalCode === null) {
     const closed = new Promise(resolve => child.once('close', resolve))

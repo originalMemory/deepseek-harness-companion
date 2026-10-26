@@ -299,3 +299,13 @@ it('retries a failed initial load and ignores aborted or subframe loads', async 
   window.close()
   expect(await result).toBe('quit')
 })
+
+
+it('applies restored bounds while retaining the remote window minimum size', async () => {
+  const { window } = await fixture()
+  const bounds = { x: 120, y: 80, width: 900, height: 700 }
+  const closed = openRemoteWindow('https://nas.example.com', locale.messages, vi.fn(), undefined, bounds)
+  expect(native.create.mock.lastCall![0]).toMatchObject({ ...bounds, minWidth: 520, minHeight: 600 })
+  window.close()
+  await expect(closed).resolves.toBe('quit')
+})

@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, Rectangle } from 'electron'
 
+const geometry = vi.hoisted(() => ({ load: vi.fn<() => Rectangle | undefined>(() => undefined), remember: vi.fn() }))
 const trayDispose = vi.hoisted(() => vi.fn())
 vi.mock('../src/window-chrome.ts', () => ({ hideCompanionWindow: (window: BrowserWindow) => { window.hide() } }))
 vi.mock('../src/tray.ts', () => ({ CompanionTray: class { dispose = trayDispose; setRunning = vi.fn(); available = true } }))
@@ -35,12 +36,14 @@ vi.mock('electron', async () => {
 vi.mock('../src/identity.ts', () => ({
   COMPANION_NAME: 'DeepSeek Harness Companion', initializeCompanionIdentity: state.identity,
 }))
+vi.mock('../src/window-state.ts', () => ({ loadWindowBounds: geometry.load, rememberWindowBounds: geometry.remember }))
 vi.mock('../src/connection-window.ts', () => ({
   savedRemoteOrigin: state.saved, promptRemoteAddress: state.prompt, openRemoteWindow: state.remote,
 }))
 beforeEach(() => {
   vi.resetModules()
   vi.clearAllMocks()
+  geometry.load.mockReset().mockReturnValue(undefined)
   state.saved.mockReset().mockResolvedValue('https://nas.example.com')
   state.prompt.mockReset().mockResolvedValue(undefined)
   state.remote.mockReset().mockResolvedValue('quit')
@@ -52,7 +55,7 @@ it('opens the remembered server immediately without a local-or-remote choice', a
   await import('../src/main.ts')
   await vi.waitFor(() => { expect(state.remote).toHaveBeenCalledOnce() })
   expect(state.remote).toHaveBeenCalledWith('https://nas.example.com', expect.anything(), expect.any(Function),
-    process.platform === 'win32' || process.platform === 'darwin' ? expect.anything() : undefined)
+    process.platform === 'win32' || process.platform === 'darwin' ? expect.anything() : undefined, undefined)
   expect(state.prompt).not.toHaveBeenCalled()
   expect(state.identity.mock.invocationCallOrder[0]).toBeLessThan(state.lock.mock.invocationCallOrder[0]!)
 })
@@ -133,4 +136,18 @@ it('reports an occupied global shortcut while still opening the server', async (
   await import('../src/main.ts')
   await vi.waitFor(() => { expect(state.remote).toHaveBeenCalledOnce() })
   expect(state.error).toHaveBeenCalledWith('DeepSeek Harness Companion', expect.stringContaining('Ctrl+Shift+E'))
+})
+
+it('restores and tracks bounds only for the remote application window', async () => {
+  const bounds = { x: 120, y: 80, width: 900, height: 700 }
+  geometry.load.mockReturnValue(bounds)
+  const { BrowserWindow: TestWindow } = await import('electron')
+  const window = new TestWindow()
+  state.remote.mockImplementationOnce(async (_url, _messages, own) => { own(window); return 'quit' })
+  await import('../src/main.ts')
+  await vi.waitFor(() => { expect(state.remote).toHaveBeenCalledOnce() })
+  expect(state.remote).toHaveBeenCalledWith('https://nas.example.com', expect.anything(), expect.any(Function),
+    process.platform === 'win32' || process.platform === 'darwin' ? expect.anything() : undefined, bounds)
+  expect(geometry.load).toHaveBeenCalledWith('/companion-data', expect.anything())
+  expect(geometry.remember).toHaveBeenCalledWith(window, '/companion-data', expect.anything())
 })

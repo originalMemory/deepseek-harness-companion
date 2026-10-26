@@ -24,6 +24,8 @@ const en = {
   retry: 'Retry',
   change: 'Change server…',
   quit: 'Quit',
+  windowStateReadFailed: 'The saved window layout could not be read. The default layout will be used. Check window-state.json in the application data folder.',
+  windowStateWriteFailed: 'The window layout could not be saved and may not be restored next time. Check access to the application data folder.',
   settingsFailed: 'The server address could not be read or saved. You may need to enter it again next time.',
 }
 
@@ -55,6 +57,8 @@ const zh: CompanionMessages = {
   retry: '重试',
   change: '更换服务器…',
   quit: '退出',
+  windowStateReadFailed: '无法读取窗口位置和尺寸，将使用默认布局。请检查应用配置目录中的 window-state.json。',
+  windowStateWriteFailed: '无法保存窗口位置和尺寸，下次启动可能无法恢复。请检查应用配置目录的权限。',
   settingsFailed: '无法读取或保存服务器地址，下次启动时可能需要重新输入。',
 }
 
