@@ -9,6 +9,8 @@ import { companionMessages } from '../src/locale.ts'
 import { COMPANION_NAME } from '../src/identity.ts'
 import type { CompanionTray } from '../src/tray.ts'
 
+vi.mock('../src/wallpaper.ts', () => ({ installWallpaper: () => () => {} }))
+
 const monitoring = vi.hoisted(() => ({ ready: vi.fn<() => Promise<void>>(async () => {}), dispose: vi.fn() }))
 vi.mock('../src/window-chrome.ts', () => ({
   captionPreload: '/companion/preload.cjs', remoteWindowChrome: () => ({ titleBarStyle: 'hidden' }),

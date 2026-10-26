@@ -2,6 +2,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { BrowserWindow, dialog, session, shell, type Rectangle } from 'electron'
+import { installWallpaper } from './wallpaper.ts'
 import { COMPANION_NAME } from './identity.ts'
 import type { CompanionMessages } from './locale.ts'
 import { CompletionNotifications } from './completion-notifications.ts'
@@ -153,7 +154,7 @@ export function openRemoteWindow(
       storage.flushStorageData()
       resolve(outcome)
     })
-    installWindowChrome(window, origin, messages, change)
+    installWindowChrome(window, origin, messages, change, installWallpaper(window, origin))
     const failed = async (): Promise<void> => {
       if (reporting || window.isDestroyed()) return
       reporting = true

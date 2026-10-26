@@ -14,6 +14,7 @@ Companion opens a remote DeepSeek Harness Web GUI without starting a local Host.
 
 - [Run](#run)
 - [Window and shortcut](#window-and-shortcut)
+- [Wallpaper](#wallpaper)
 - [Notifications](#notifications)
 - [Tray and running status](#tray-and-running-status)
 - [Identity and storage](#identity-and-storage)
@@ -55,6 +56,16 @@ Windows uses the official integrated caption and Application/Edit menu. macOS re
 Normal window position and size are saved to `window-state.json` when the remote window hides or closes and restored on its next launch. Maximized and fullscreen dimensions do not replace the normal bounds. Restored bounds are fitted to the current display work area. The first-use server-address form does not change these preferences; storage failures are reported and invalid saved data uses the default layout.
 
 After building, `node companion/scripts/check-window.mjs` checks the shipped remote-window entry with a temporary profile and local fixture pages: Web shortcut detection, authentication-page recovery, clipboard permissions, caption menu and composer focus.
+
+<a id="wallpaper"></a>
+
+## Wallpaper
+
+Right-click the page, choose **背景轮播…** beside **Change server…**, then select an image folder in the dedicated Chinese settings dialog. The dialog provides enable/disable, subfolders, random/filename order, interval, dimming, blur and fade duration. **保存并应用** saves and applies changes; **下一张** and **重新扫描** also save and apply the current settings. Wallpaper is disabled initially; choosing a folder and saving enables random rotation every 30 minutes without consecutive repeats. Preferences live in Companion's `wallpaper.json` and apply across server changes.
+
+This feature follows the image scanning and presentation of [dsh-wallpaper-rotator](https://github.com/originalMemory/dsh-wallpaper-rotator), running inside the shell without a server plugin or server polling. It accepts JPG, PNG, WebP, GIF, AVIF and BMP, with up to 5000 images and six subdirectory levels, skipping hidden files, symlinks, empty files and images larger than 48 MiB. The shell pushes only current image data to the selected origin's isolated preload, exposing no directory-reading API; page scripts can read wallpapers displayed in the DOM, so select only images you intend to show to that page. Saving validates the directory and image loading in the current page before replacing preferences; failure preserves the previous preferences and background and produces a native error. Preference saving and image display have separate feedback. Disabling removes the layer and background styles and stops the timer.
+
+After building, run `node companion/scripts/check-wallpaper.mjs` to verify folder selection, image compositing, next image, reload restoration, disabling restores the original background, and saved preferences in a real Electron window. This check uses temporary preferences and a local page; the server's content security policy must allow `data:` images, and opaque panels in custom skins can obscure wallpaper.
 
 <a id="notifications"></a>
 

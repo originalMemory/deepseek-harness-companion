@@ -35,14 +35,16 @@ export const captionPreload = fileURLToPath(new URL('./preload.cjs', import.meta
  * @param origin - Only selected-origin main-frame messages are accepted.
  * @param messages - Companion recovery and quit labels.
  * @param change - Replace the current server window.
+ * @param wallpaper - Open local wallpaper settings.
  */
-export function installWindowChrome(window: BrowserWindow, origin: string, messages: CompanionMessages, change: () => void): void {
+export function installWindowChrome(window: BrowserWindow, origin: string, messages: CompanionMessages, change: () => void, wallpaper?: () => void): void {
   const trusted = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean =>
     !window.isDestroyed() && event.sender === window.webContents && event.senderFrame === window.webContents.mainFrame
     && event.senderFrame !== null && new URL(event.senderFrame.url).origin === origin
   const applicationItems = (): MenuItemConstructorOptions[] => [
     ...(process.platform === 'darwin' ? [{ role: 'about' as const }, { type: 'separator' as const }] : []),
     { label: messages.change, click: change },
+    ...(wallpaper === undefined ? [] : [{ label: '背景轮播…', click: wallpaper }]),
     { type: 'separator' },
     ...(process.platform === 'darwin' ? [{ role: 'hide' as const }, { role: 'hideOthers' as const }, { role: 'unhide' as const }, { type: 'separator' as const }] : []),
     { label: messages.quit, role: 'quit' },

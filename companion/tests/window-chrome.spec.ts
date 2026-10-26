@@ -39,9 +39,12 @@ it('uses the official native caption geometry and rejects unowned frames before 
     expect(remoteWindowChrome()).toMatchObject({ titleBarStyle: 'hidden', titleBarOverlay: { height: 40 } })
     const window = new BrowserWindow()
     const change = vi.fn()
-    installWindowChrome(window, 'https://nas.example.com', companionMessages('en'), change)
+    const wallpaper = vi.fn()
+    installWindowChrome(window, 'https://nas.example.com', companionMessages('en'), change, wallpaper)
     window.webContents.emit('context-menu')
-    expect(native.items[0]!.label).toBe('Change server…')
+    expect(native.items.slice(0, 2).map(item => item.label)).toEqual(['Change server…', '背景轮播…'])
+    ;(native.items[1]!.click as () => void)()
+    expect(wallpaper).toHaveBeenCalledOnce()
     const handler = native.handlers.get('dsh-desktop:windows-menu')!
     const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame } as IpcMainInvokeEvent
     for (const invalid of [

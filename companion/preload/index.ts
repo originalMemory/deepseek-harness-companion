@@ -1,5 +1,6 @@
 /** Isolated caption UI; exposes no Node or Harness Host API to remote documents. */
 import { ipcRenderer } from 'electron'
+import { installWallpaperPresentation } from './wallpaper.ts'
 import { syncWindowFullscreen } from '../../apps/desktop/src/preload-platform.ts'
 import { syncWindowsAppearance } from '../../apps/desktop/src/preload-windows.ts'
 import { DRAG_MARK, INTERACTIVE_SELECTOR, RECALL_MARK } from '../../packages/client/web/src/window-drag/regions.ts'
@@ -8,6 +9,7 @@ import { installWindowDragRecall } from '../../packages/client/web/src/window-dr
 const conversationDragRow = `header[${DRAG_MARK}] > [data-conversation-header-leading] + div`
 
 if (process.isMainFrame && ['http:', 'https:'].includes(location.protocol)) {
+  installWallpaperPresentation()
   // data-platform opts into the official native keyboard bridge, which this remote client does not expose.
   const mark = (): void => {
     document.documentElement.dataset.companionPlatform = process.platform
