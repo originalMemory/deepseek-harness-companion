@@ -15,8 +15,9 @@
     "check": "tsc -p tsconfig.check.json",
     "start": "pnpm run build && electron .",
     "test": "vitest run",
-    "package:win": "pnpm run build && electron-builder --win portable --x64",
-    "package:mac": "pnpm run build && electron-builder --mac zip"
+    "package:win": "node scripts/local-build.ts package win",
+    "package:mac": "node scripts/local-build.ts package mac",
+    "update": "node scripts/local-build.ts update"
   },
   "devDependencies": {
     "@types/node": "22.20.1",

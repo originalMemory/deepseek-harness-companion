@@ -43,7 +43,15 @@ pnpm --dir companion check
 pnpm --dir companion package:win
 ```
 
-The portable executable is written under `companion/dist/`. Packaging uses the existing desktop icon without modifying it. `pnpm --dir companion package:mac` configures a macOS ZIP build with ad-hoc signing; it requires qualification on macOS.
+The portable executable is written under `companion/dist/`. Packaging uses the existing desktop icon without modifying it. `pnpm --dir companion package:mac` builds a macOS ZIP with a local signature and no Apple notarization. `COMPANION_MAC_SIGNING_IDENTITY` in the shell or Git-ignored `companion/.env.local` selects an existing keychain identity; without either setting, packaging uses ad-hoc signing. See [.env.local.example](.env.local.example), and use `security find-identity -v -p codesigning` to list available names. An unavailable configured identity stops the command before quitting Companion.
+
+To quit, rebuild, update and reopen Companion on the current machine, run this command from the repository root:
+
+```sh
+pnpm update:companion
+```
+
+`pnpm --dir companion update` runs the same command without the parent workspace launcher; `pnpm update:desktop` is an alias for Companion. macOS requests Quit, waits for the installed Companion process to exit, builds and verifies its signed ZIP/application, stages a complete copy beside `/Applications/DeepSeek Harness Companion.app`, replaces it, and opens that exact path. Write permission to `/Applications` is required. A failed replacement restores the previous application; a failed restoration retains and reports the backup path. Windows terminates only Companion's local process trees, rebuilds its x64 portable executable, and launches the new copy under `companion/dist/`; it does not update a copy stored elsewhere. Remote server tasks continue. A build or signature failure leaves the previous application files in place and does not relaunch the client. Windows update execution still requires native qualification.
 
 <a id="window-and-shortcut"></a>
 
@@ -97,9 +105,9 @@ Only the server origin is written to `remote-url.txt`; pairing paths, query para
 
 ## Maintenance and limits
 
-All fork-specific code, configuration, dependencies, tests and expected output live under `companion/`, with an independent lockfile. Merging upstream desktop changes normally touches different files, although an upstream directory with the same name can conflict. Review Electron dependency upgrades and changes to server pairing or Web authentication separately. Official native desktop features do not automatically appear in Companion; server Web UI changes arrive from the server.
+Companion sources, configuration, dependencies, tests and expected output live under `companion/`, with an independent lockfile; the root package adds update command aliases. Merging upstream desktop changes normally touches different files, although an upstream directory with the same name can conflict. Review Electron dependency upgrades and changes to server pairing or Web authentication separately. Official native desktop features do not automatically appear in Companion; server Web UI changes arrive from the server.
 
-Companion allows sanitized clipboard writes only from the selected-origin main frame; clipboard reads and other native permissions are denied. It has no local filesystem bridge, local onboarding, or automatic updater. English and Chinese shell copy are included. The caption preload is bundled from the fork's source during builds, so upstream caption changes must be checked after merging. The portable Windows package is unsigned; macOS uses ad-hoc signing and requires native qualification. Linux packaging is not configured.
+Companion allows sanitized clipboard writes only from the selected-origin main frame; clipboard reads and other native permissions are denied. It has no local filesystem bridge, local onboarding, or automatic updater. English and Chinese shell copy are included. The caption preload is bundled from the fork's source during builds, so upstream caption changes must be checked after merging. The portable Windows package is unsigned; macOS uses ad-hoc signing or a configured local keychain identity, without notarization. Linux packaging is not configured.
 
 <a id="dev-note"></a>
 

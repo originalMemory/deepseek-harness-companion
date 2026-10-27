@@ -43,7 +43,15 @@ pnpm --dir companion check
 pnpm --dir companion package:win
 ```
 
-便携版可执行文件写入 `companion/dist/`。打包复用现有桌面图标，不修改图标文件。`pnpm --dir companion package:mac` 配置了使用临时签名的 macOS ZIP 打包，需要在 macOS 上验证。
+便携版可执行文件写入 `companion/dist/`。打包复用现有桌面图标，不修改图标文件。`pnpm --dir companion package:mac` 构建使用本机签名的 macOS ZIP，不进行 Apple 公证。shell 或被 Git 忽略的 `companion/.env.local` 中的 `COMPANION_MAC_SIGNING_IDENTITY` 可选择已有钥匙串签名身份；均未设置时使用临时签名。参见 [.env.local.example](.env.local.example)，可运行 `security find-identity -v -p codesigning` 列出可用名称。配置的身份不可用时，命令会在退出 Companion 前停止。
+
+在当前机器上退出、重新构建、更新并打开 Companion，可从仓库根目录运行：
+
+```sh
+pnpm update:companion
+```
+
+`pnpm --dir companion update` 不经父工作区入口运行同一命令；`pnpm update:desktop` 是 Companion 的别名。macOS 请求退出，等待已安装的 Companion 进程结束，构建并校验已签名 ZIP／应用，在 `/Applications/DeepSeek Harness Companion.app` 旁暂存完整副本，替换后从该准确路径打开。需要 `/Applications` 的写权限。替换失败会恢复旧应用；恢复也失败时保留并报告备份路径。Windows 仅终止 Companion 的本地进程树，重新构建 x64 便携可执行文件，再从 `companion/dist/` 启动新副本；不会更新存放在其他位置的副本。远程服务器任务继续运行。构建或签名失败会保留原应用文件，不会重新启动客户端。Windows 更新命令仍需在 Windows 上实际验证。
 
 <a id="window-and-shortcut"></a>
 
@@ -97,9 +105,9 @@ Windows 复用官方桌面的鲸鱼 ICO 和打开、退出交互。macOS 在菜�
 
 ## 维护与限制
 
-fork 专属的代码、配置、依赖、测试和预期输出全部位于 `companion/`，并使用独立锁文件。合并上游桌面改动时通常涉及不同文件，但若上游增加同名目录，仍可能冲突。Electron 依赖升级、服务器配对或 Web 认证变化需要单独检查。官方原生桌面功能不会自动出现在 Companion 中，服务器 Web UI 的变化由服务器提供。
+Companion 的源码、配置、依赖、测试和预期输出位于 `companion/`，并使用独立锁文件；根包提供更新命令别名。合并上游桌面改动时通常涉及不同文件，但若上游增加同名目录，仍可能冲突。Electron 依赖升级、服务器配对或 Web 认证变化需要单独检查。官方原生桌面功能不会自动出现在 Companion 中，服务器 Web UI 的变化由服务器提供。
 
-Companion 仅允许所选来源的主框架写入清洗后的剪贴板内容，拒绝剪贴板读取和其他原生权限。不提供本地文件系统桥接、本地账号引导或自动更新器。桌面壳包含中英文文案。标题栏 preload 在构建时从 fork 源码打包，合并上游标题栏改动后需要检查。Windows 便携包未签名；macOS 使用临时签名，需要本机验证。Linux 打包尚未配置。
+Companion 仅允许所选来源的主框架写入清洗后的剪贴板内容，拒绝剪贴板读取和其他原生权限。不提供本地文件系统桥接、本地账号引导或自动更新器。桌面壳包含中英文文案。标题栏 preload 在构建时从 fork 源码打包，合并上游标题栏改动后需要检查。Windows 便携包未签名；macOS 使用临时签名或配置的本机钥匙串身份，不进行公证。Linux 打包尚未配置。
 
 <a id="dev-note"></a>
 
