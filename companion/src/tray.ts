@@ -24,17 +24,18 @@ export class CompanionTray {
    */
   constructor(
     private readonly messages: CompanionMessages, private readonly open: () => void, quit: () => void,
-    private readonly platform: string = process.platform,
+    platform: string = process.platform,
     private readonly exiting: () => boolean = () => false,
   ) {
     this.idle = nativeImage.createFromPath(fileURLToPath(new URL(
       platform === 'darwin' ? '../assets/trayTemplate.png' : '../assets/tray.ico', import.meta.url,
     )))
-    this.busy = platform === 'darwin' ? this.idle
-      : nativeImage.createFromPath(fileURLToPath(new URL('../assets/tray-running.ico', import.meta.url)))
+    this.busy = nativeImage.createFromPath(fileURLToPath(new URL(
+      platform === 'darwin' ? '../assets/trayBadgeTemplate.png' : '../assets/tray-running.ico', import.meta.url,
+    )))
     const icon = this.idle
-    if (icon.isEmpty() || (platform !== 'darwin' && this.busy.isEmpty())) throw new Error('Companion tray icon is unavailable')
-    if (platform === 'darwin') icon.setTemplateImage(true)
+    if (icon.isEmpty() || this.busy.isEmpty()) throw new Error('Companion tray icon is unavailable')
+    if (platform === 'darwin') { icon.setTemplateImage(true); this.busy.setTemplateImage(true) }
     const tray = new Tray(icon)
     this.tray = tray
     try {
@@ -81,7 +82,7 @@ export class CompanionTray {
     this.animation = undefined
     this.lit = true
     this.paint()
-    if (this.tray !== undefined && !this.focused && this.running !== undefined && this.running > 0) {
+    if (this.tray !== undefined && this.running !== undefined && this.running > 0) {
       this.animation = setInterval(() => { this.lit = !this.lit; this.paint() }, 800)
     }
   }
@@ -91,9 +92,8 @@ export class CompanionTray {
     if (tray === undefined) return
     try {
       const working = this.running !== undefined && this.running > 0
-      const badge = !this.focused && (working ? this.lit : this.unread)
-      if (this.platform === 'darwin') tray.setTitle(badge ? '●' : !this.focused && working ? ' ' : '', { fontType: 'monospaced' })
-      else tray.setImage(badge ? this.busy : this.idle)
+      const badge = working ? this.lit : !this.focused && this.unread
+      tray.setImage(badge ? this.busy : this.idle)
       const status = this.running === undefined ? this.messages.activityUnknown : working
         ? this.messages.activityRunning.replace('{count}', String(this.running)) : this.messages.activityIdle
       tray.setToolTip(`${COMPANION_NAME} — ${status}${this.unread ? ' · 有未读回复' : ''}`)

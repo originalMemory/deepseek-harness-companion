@@ -30,6 +30,19 @@ vi.mock('electron', () => ({
 beforeEach(() => { vi.clearAllMocks(); native.trays.length = 0; native.images.length = 0; native.fail = false })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
+it('keeps idle and badged macOS artwork within the same standard and Retina dimensions', () => {
+  for (const scale of [1, 2]) {
+    const suffix = scale === 1 ? '' : '@2x'
+    const idle = readFileSync(new URL(`../assets/trayTemplate${suffix}.png`, import.meta.url))
+    const busy = readFileSync(new URL(`../assets/trayBadgeTemplate${suffix}.png`, import.meta.url))
+    for (const png of [idle, busy]) {
+      expect(png.readUInt32BE(16)).toBe(22 * scale)
+      expect(png.readUInt32BE(20)).toBe(16 * scale)
+    }
+    expect(busy).not.toEqual(idle)
+  }
+})
+
 it('uses official Windows artwork and the original open/quit tray interaction', () => {
   const open = vi.fn()
   const quit = vi.fn()
@@ -57,35 +70,64 @@ it('uses official Windows artwork and the original open/quit tray interaction', 
   expect(owner.available).toBe(false)
 })
 
-it('blinks while background work runs, retains unread completions, and clears them on focus', () => {
+it('blinks while work runs, retains unread completions, and clears unread replies on focus', () => {
   vi.useFakeTimers()
   const owner = new CompanionTray(companionMessages('zh-CN'), vi.fn(), vi.fn(), 'darwin')
   const template = native.images[0] as NativeImage
   expect(template.setTemplateImage).toHaveBeenCalledWith(true)
+  expect((native.images[1] as NativeImage).setTemplateImage).toHaveBeenCalledWith(true)
   onTestFinished(() => owner.dispose())
   const tray = native.trays[0] as Tray
   owner.setRunning(1)
-  expect(tray.setTitle).toHaveBeenLastCalledWith('●', { fontType: 'monospaced' })
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[1])
   expect(tray.setToolTip).toHaveBeenLastCalledWith('DeepSeek Harness Companion — 正在回复（1）')
   vi.advanceTimersByTime(800)
-  expect(tray.setTitle).toHaveBeenLastCalledWith(' ', { fontType: 'monospaced' })
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[0])
   vi.advanceTimersByTime(800)
-  expect(tray.setTitle).toHaveBeenLastCalledWith('●', { fontType: 'monospaced' })
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[1])
   owner.markUnread()
   owner.setRunning(0)
-  expect(tray.setTitle).toHaveBeenLastCalledWith('●', { fontType: 'monospaced' })
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[1])
   expect(vi.getTimerCount()).toBe(0)
   owner.setRunning(undefined)
-  expect(tray.setTitle).toHaveBeenLastCalledWith('●', { fontType: 'monospaced' })
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[1])
   owner.setFocused(true)
-  expect(tray.setTitle).toHaveBeenLastCalledWith('', { fontType: 'monospaced' })
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[0])
   expect(tray.setToolTip).toHaveBeenLastCalledWith('DeepSeek Harness Companion — 等待会话状态')
   owner.setRunning(2)
-  expect(vi.getTimerCount()).toBe(0)
+  expect(vi.getTimerCount()).toBe(1)
   owner.setFocused(false)
   expect(vi.getTimerCount()).toBe(1)
   owner.dispose()
   expect(vi.getTimerCount()).toBe(0)
+})
+
+it.each(['darwin', 'win32'])('keeps the %s running indicator active across foreground and background changes', (platform) => {
+  vi.useFakeTimers()
+  const owner = new CompanionTray(companionMessages('en'), vi.fn(), vi.fn(), platform)
+  onTestFinished(() => owner.dispose())
+  const tray = native.trays[0] as Tray
+  const badge = (lit: boolean): void => {
+    expect(tray.setImage).toHaveBeenLastCalledWith(native.images[lit ? 1 : 0])
+    expect(tray.setTitle).not.toHaveBeenCalled()
+  }
+  owner.setFocused(true)
+  owner.setRunning(1)
+  badge(true)
+  expect(vi.getTimerCount()).toBe(1)
+  vi.advanceTimersByTime(800)
+  badge(false)
+  owner.setFocused(false)
+  badge(true)
+  vi.advanceTimersByTime(800)
+  badge(false)
+  owner.setFocused(true)
+  badge(true)
+  vi.advanceTimersByTime(800)
+  badge(false)
+  owner.setRunning(0)
+  expect(vi.getTimerCount()).toBe(0)
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[0])
 })
 
 it('restores window access and disables close-to-tray if native status updates fail', () => {
@@ -109,9 +151,9 @@ it('allows explicit quit through close-to-tray and resumes if the page cancels u
   owner.dispose()
 })
 
-it('blinks the Windows badge and keeps it unread until the remote window regains focus', () => {
+it.each(['darwin', 'win32'])('blinks the %s badge and keeps it unread until the remote window regains focus', (platform) => {
   vi.useFakeTimers()
-  const owner = new CompanionTray(companionMessages('zh-CN'), vi.fn(), vi.fn(), 'win32')
+  const owner = new CompanionTray(companionMessages('zh-CN'), vi.fn(), vi.fn(), platform)
   onTestFinished(() => owner.dispose())
   const tray = native.trays[0] as Tray
   owner.setRunning(1)
@@ -124,6 +166,9 @@ it('blinks the Windows badge and keeps it unread until the remote window regains
   owner.setRunning(0)
   expect(tray.setImage).toHaveBeenLastCalledWith(native.images[1])
   expect(vi.getTimerCount()).toBe(0)
+  vi.advanceTimersByTime(2400)
+  expect(tray.setImage).toHaveBeenLastCalledWith(native.images[1])
+  expect(tray.setTitle).not.toHaveBeenCalled()
   owner.setFocused(true)
   expect(tray.setImage).toHaveBeenLastCalledWith(native.images[0])
   owner.setFocused(false)

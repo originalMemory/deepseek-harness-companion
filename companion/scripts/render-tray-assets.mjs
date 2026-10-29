@@ -16,7 +16,10 @@ const group = source.match(/<g id="tray-glyph"[^>]*>([\s\S]*?)<\/g>/u)
 if (group === null) throw new Error('Official tray glyph is missing')
 const glyph = group[1].replace(/fill="url\([^)]*\)"/gu, 'fill="black"').replace(/fill-opacity="[^"]*"/gu, '')
 const template = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="16" viewBox="150 260 840 630">${glyph}</svg>`
-for (const scale of [1, 2]) {
-  await sharp(Buffer.from(template)).resize(22 * scale, 16 * scale).png()
-    .toFile(fileURLToPath(new URL(scale === 1 ? 'trayTemplate.png' : 'trayTemplate@2x.png', assets)))
+const badge = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="16" viewBox="150 260 840 630"><defs><mask id="badge-gap" maskUnits="userSpaceOnUse" x="150" y="260" width="840" height="630"><rect x="150" y="260" width="840" height="630" fill="white"/><circle cx="850" cy="745" r="120" fill="black"/></mask></defs><g mask="url(#badge-gap)">${glyph}</g><circle cx="850" cy="745" r="88" fill="black"/></svg>`
+for (const [name, svg] of [['trayTemplate', template], ['trayBadgeTemplate', badge]]) {
+  for (const scale of [1, 2]) {
+    await sharp(Buffer.from(svg)).resize(22 * scale, 16 * scale).png()
+      .toFile(fileURLToPath(new URL(`${name}${scale === 1 ? '' : '@2x'}.png`, assets)))
+  }
 }
