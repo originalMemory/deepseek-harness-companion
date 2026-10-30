@@ -117,3 +117,31 @@ it('keeps default placement available when the native storage-error dialog fails
   expect(loadWindowBounds(directory, messages)).toBeUndefined()
   expect(console.warn).toHaveBeenCalled()
 })
+
+it('keeps the settings window layout separate from the remote window layout', () => {
+  const { directory, window, file } = fixture()
+  const remote = { ...native.bounds }
+  writeFileSync(file, JSON.stringify(remote))
+  const settingsFile = 'wallpaper-window-state.json'
+  rememberWindowBounds(window, directory, messages, settingsFile)
+  native.bounds = { x: 420, y: 120, width: 660, height: 750 }
+  window.emit('close')
+  expect(loadWindowBounds(directory, messages, settingsFile)).toEqual(native.bounds)
+  expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(remote)
+})
+
+it('saves the last observed layout when the native window has already been destroyed', () => {
+  const { directory, window } = fixture()
+  const settingsFile = 'wallpaper-window-state.json'
+  rememberWindowBounds(window, directory, messages, settingsFile)
+  native.bounds = { x: 420, y: 120, width: 660, height: 750 }
+  window.emit('move')
+  native.bounds = { ...native.bounds, width: 780 }
+  window.emit('resize')
+  vi.spyOn(window, 'isDestroyed').mockReturnValue(true)
+  vi.spyOn(window, 'getNormalBounds').mockImplementation(() => { throw new Error('Object has been destroyed') })
+  expect(() => window.emit('closed')).not.toThrow()
+  expect(loadWindowBounds(directory, messages, settingsFile)).toEqual(native.bounds)
+  expect(window.listenerCount('move')).toBe(0)
+  expect(window.listenerCount('resize')).toBe(0)
+})

@@ -1,8 +1,14 @@
 /** Trusted local wallpaper form with native folder selection and no renderer bridge. */
-import { BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
+import { loadWindowBounds, rememberWindowBounds } from './window-state.ts'
 import { readWallpaperSettings, type WallpaperSettings } from './wallpaper-settings.ts'
 
 const labels = { enabled: '启用背景轮播', recursive: '包含子目录', order: '轮播顺序', intervalMin: '切换间隔', dim: '暗化', blur: '模糊', transitionMs: '淡入淡出时长' }
+const layoutFile = 'wallpaper-window-state.json'
+const layoutMessages = {
+  windowStateReadFailed: '无法读取背景轮播设置窗口的位置，将使用默认布局。请检查应用配置目录中的 wallpaper-window-state.json。',
+  windowStateWriteFailed: '无法保存背景轮播设置窗口的位置，下次打开可能无法恢复。请检查应用配置目录的权限。',
+}
 const failed = '无法加载或保存背景轮播，请检查图片目录及权限后重试。'
 const target = 'https://dsh-companion.invalid/wallpaper'
 const escape = (text: string): string => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
@@ -17,11 +23,14 @@ export function openWallpaperDialog(
   parent: BrowserWindow, initial: WallpaperSettings,
   apply: (value: WallpaperSettings, next: boolean) => Promise<boolean>,
 ): BrowserWindow {
+  const userData = app.getPath('userData')
+  const bounds = loadWindowBounds(userData, layoutMessages, layoutFile)
   const window = new BrowserWindow({
-    parent, width: 660, height: 750, minWidth: 540, minHeight: 620, show: false,
+    parent, width: 660, height: 750, ...bounds, minWidth: 540, minHeight: 620, show: false,
     title: '背景轮播', autoHideMenuBar: true,
     webPreferences: { partition: 'companion-wallpaper-settings', nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   })
+  rememberWindowBounds(window, userData, layoutMessages, layoutFile)
   window.setMenu(null)
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   let page = ''

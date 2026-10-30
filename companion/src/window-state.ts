@@ -22,11 +22,12 @@ function boundsRecord(value: unknown): value is Rectangle {
  * Read saved bounds and fit them to the best matching display's current work area.
  * @param userData - Companion-owned preference directory.
  * @param messages - Localized storage failure copy.
+ * @param fileName - Preference filename; omission uses the main window's window-state.json.
  * @returns Valid bounds, or undefined on first use or after a reported read failure.
  */
-export function loadWindowBounds(userData: string, messages: CompanionMessages): Rectangle | undefined {
+export function loadWindowBounds(userData: string, messages: Pick<CompanionMessages, 'windowStateReadFailed'>, fileName = 'window-state.json'): Rectangle | undefined {
   try {
-    const value: unknown = JSON.parse(readFileSync(join(userData, 'window-state.json'), 'utf8'))
+    const value: unknown = JSON.parse(readFileSync(join(userData, fileName), 'utf8'))
     if (!boundsRecord(value)) throw new Error('Invalid Companion window bounds')
     const area = screen.getDisplayMatching(value).workArea
     const width = Math.min(value.width, area.width)
@@ -45,34 +46,38 @@ export function loadWindowBounds(userData: string, messages: CompanionMessages):
 }
 
 /**
- * Save the latest normal bounds when the window hides or closes.
- * @param window - Remote application window; maximized and fullscreen dimensions are not stored.
+ * Save normal bounds on hide or close, including cached bounds after native destruction.
+ * @param window - Owned window; maximized and fullscreen dimensions are not stored.
  * @param userData - Companion-owned preference directory.
  * @param messages - Localized storage failure copy; repeated failures show one dialog per window.
+ * @param fileName - Preference filename; omission uses the main window's window-state.json.
  * @returns Disposer for the window-owned listeners; also runs when the window closes.
  */
-export function rememberWindowBounds(window: BrowserWindow, userData: string, messages: CompanionMessages): () => void {
+export function rememberWindowBounds(window: BrowserWindow, userData: string, messages: Pick<CompanionMessages, 'windowStateWriteFailed'>, fileName = 'window-state.json'): () => void {
   let previous: string | undefined
   let reported = false
-  const save = (): void => {
-    if (window.isDestroyed()) return
+  let latest = window.getNormalBounds()
+  const track = (): void => { if (!window.isDestroyed()) latest = window.getNormalBounds() }
+  const persist = (): void => {
     try {
-      const raw = `${JSON.stringify(window.getNormalBounds())}\n`
+      const raw = `${JSON.stringify(latest)}\n`
       if (raw === previous) return
       mkdirSync(userData, { recursive: true, mode: 0o700 })
       // shortcut: failed writes can lose this resettable layout; use atomic replacement before storing critical state.
-      writeFileSync(join(userData, 'window-state.json'), raw, { mode: 0o600 })
+      writeFileSync(join(userData, fileName), raw, { mode: 0o600 })
       previous = raw
     } catch (error) {
       console.warn(messages.windowStateWriteFailed, error)
       if (!reported) { reported = true; showStorageError(messages.windowStateWriteFailed) }
     }
   }
+  const save = (): void => { if (!window.isDestroyed()) { track(); persist() } }
   const dispose = (): void => {
-    window.off('hide', save).off('close', save)
-    window.off('closed', dispose)
+    window.off('hide', save).off('close', save).off('move', track).off('resize', track)
+    window.off('closed', closed)
   }
-  window.on('hide', save).on('close', save)
-  window.once('closed', dispose)
+  const closed = (): void => { persist(); dispose() }
+  window.on('hide', save).on('close', save).on('move', track).on('resize', track)
+  window.once('closed', closed)
   return dispose
 }
