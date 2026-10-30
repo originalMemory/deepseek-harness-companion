@@ -8,6 +8,7 @@ import { wallpaperDefaults, readWallpaperSettings, type WallpaperSettings } from
 import { nextWallpaper, scanWallpapers, wallpaperData } from './wallpaper-files.ts'
 
 /** Install local wallpaper rotation until the remote window closes.
+ * Failed automatic attempts retain the visible background and continue after the configured interval.
  * @param window - Owning remote window.
  * @param origin - Only this remote origin receives presentation updates.
  * @returns Action opening the local wallpaper settings dialog.
@@ -18,6 +19,7 @@ export function installWallpaper(window: BrowserWindow, origin: string): () => v
   let config = { ...wallpaperDefaults }
   let images: string[] = []
   let current = ''
+  let attempted = ''
   let presentation: { image: string; transitionMs: number; dim: number; blur: number } | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
@@ -52,28 +54,34 @@ export function installWallpaper(window: BrowserWindow, origin: string): () => v
   }
   const schedule = (): void => {
     clearTimeout(timer)
-    if (!disposed && config.enabled && images.length > 0) timer = setTimeout(() => run(() => advance()), config.intervalMin * 60_000)
+    if (disposed || !config.enabled || images.length === 0) return
+    const scheduledConfig = config
+    timer = setTimeout(() => run(async () => {
+      if (config !== scheduledConfig) return
+      try { await advance() } finally { schedule() }
+    }), config.intervalMin * 60_000)
   }
-  const advance = async (change = true): Promise<void> => {
-    if (disposed) return
-    if (!config.enabled || images.length === 0) { presentation = null; send(); schedule(); return }
-    const previous = images.indexOf(current)
-    const index = !change && previous >= 0 ? previous : nextWallpaper(images.length, previous, config.order)
-    const selected = images[index]!
+  const choose = (files: string[], order: WallpaperSettings['order'], change: boolean): string => {
+    if (!change && files.includes(current)) return current
+    const candidates = order === 'random' && files.length > 1 && attempted !== current ? files.filter(file => file !== attempted) : files
+    const previous = candidates.indexOf(order === 'sequence' ? attempted : current)
+    return candidates[nextWallpaper(candidates.length, previous, order)] ?? ''
+  }
+  const advance = async (): Promise<void> => {
+    if (disposed || !config.enabled || images.length === 0) return
+    const selected = choose(images, config.order, true)
+    attempted = selected
     const image = await wallpaperData(config.dir, selected)
     await checkImage(image)
     if (disposed) return
     current = selected
     presentation = { image, transitionMs: config.transitionMs, dim: config.dim, blur: config.blur }
     send()
-    schedule()
   }
   const prepare = async (next: WallpaperSettings, change: boolean): Promise<{ files: string[]; selected: string; visual: typeof presentation }> => {
     const files = !next.enabled || next.dir === '' ? [] : await scanWallpapers(next.dir, next.recursive)
     if (next.enabled && files.length === 0) throw new Error('此目录中没有支持的图片。')
-    const previous = files.indexOf(current)
-    const index = !change && previous >= 0 ? previous : nextWallpaper(files.length, previous, next.order)
-    const selected = files[index] ?? ''
+    const selected = choose(files, next.order, change)
     const visual = selected === '' ? null : { image: await wallpaperData(next.dir, selected), transitionMs: next.transitionMs, dim: next.dim, blur: next.blur }
     return { files, selected, visual }
   }
@@ -96,6 +104,7 @@ export function installWallpaper(window: BrowserWindow, origin: string): () => v
     config = next
     images = candidate.files
     current = candidate.selected
+    attempted = current
     presentation = candidate.visual
     send()
     schedule()
@@ -112,14 +121,14 @@ export function installWallpaper(window: BrowserWindow, origin: string): () => v
     config = next
     images = candidate.files
     current = candidate.selected
+    attempted = current
     presentation = candidate.visual
     send()
     schedule()
   })
   const decodingFailed = (event: Electron.IpcMainEvent): void => {
     if (!trusted(event)) return
-    clearTimeout(timer)
-    dialog.showErrorBox(COMPANION_NAME, '无法加载或保存背景轮播，请更换图片目录或检查目录权限。')
+    dialog.showErrorBox(COMPANION_NAME, '壁纸加载失败，已保留当前背景；轮播会按原间隔继续。请检查图片或网页连接。')
   }
   ipcMain.on('companion:wallpaper-failed', decodingFailed)
   contents.on('did-finish-load', send)
