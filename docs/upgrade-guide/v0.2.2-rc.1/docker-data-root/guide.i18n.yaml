@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.1/docker-data-root/guide.md
+/:
+  en: 8d8bc8af8bfa0c56
+  zh: ce8ae8d730eebf2c
+/docker-application-root-mount:
+  en: 6ae26b4d21b5da4f
+  zh: a7ed9b2317dd8c7d
+/docker-application-root-mount/change:
+  en: cfaa6355d244299d
+  zh: 4c4ad2872ee83ec5
+/docker-application-root-mount/migration:
+  en: c082d37f5b5bcb1d
+  zh: b59bac767e3af80a

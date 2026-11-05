@@ -28,7 +28,7 @@ if (args[0] === 'inspect') {
   if (format.includes('.Config.Env')) console.log('DSH_HOME=/data/dsh\\nDSH_FIXTURE=value with spaces');
   else if (format.includes('.Image')) console.log('sha256:fixture-image');
   else if (format.includes('.Config.User')) console.log('99:100');
-  else if (format.includes('.Mounts')) console.log('/opt/dsh\\n/opt/dsh/node_modules\\n/pnpm/store\\n/workspace' + (process.env.DOCKER_TEST_FAILURE === 'mount' ? '' : '\\n/data'));
+  else if (format.includes('.Mounts')) console.log('/workspace' + (process.env.DOCKER_TEST_FAILURE === 'mount' ? '' : '\\n/data'));
 } else if (args[0] === 'run') {
   const file = args[args.indexOf('--env-file') + 1];
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);

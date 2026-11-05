@@ -14,7 +14,7 @@ docker inspect --type container --format '{{range .Config.Env}}{{println .}}{{en
 image=$(docker inspect --type container --format '{{.Image}}' "$container")
 user=$(docker inspect --type container --format '{{.Config.User}}' "$container")
 mounts=$(docker inspect --type container --format '{{range .Mounts}}{{println .Destination}}{{end}}' "$container")
-for target in /opt/dsh /opt/dsh/node_modules /pnpm/store /data /workspace; do
+for target in /data /workspace; do
   if ! printf '%s\n' "$mounts" | grep -Fx "$target" >/dev/null; then
     printf '缺少必要挂载 %s，请先修正 Unraid 容器配置，再执行准备。\n' "$target" >&2
     exit 1

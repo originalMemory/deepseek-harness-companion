@@ -1,7 +1,6 @@
 /** 准备挂载的 Linux 源码，再通过官方浏览器认证启动构建后的 CLI。 */
-import { createHash } from 'node:crypto'
 import { spawn, execFileSync } from 'node:child_process'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { networkInterfaces } from 'node:os'
 import { isIP } from 'node:net'
 import { dirname, join, resolve } from 'node:path'
@@ -40,19 +39,11 @@ export function webConfiguration(env, interfaces = networkInterfaces()) {
 }
 
 /**
- * 标识构建使用的 checkout 与已跟踪改动，同时纳入尚未首次提交的部署脚本。
- * @returns {Promise<string>} 源码和依赖指纹。
+ * 读取 checkout 提交；未提交修改需要显式 prepare。
+ * @returns {string} 完整 Git 提交哈希。
  */
-export async function sourceFingerprint() {
-  const hash = createHash('sha256')
-  for (const args of [
-    ['rev-parse', 'HEAD'],
-    ['diff', '--binary', 'HEAD', '--', 'packages', 'apps', 'vendor', 'native', 'scripts', '*.json', '*.yaml'],
-  ]) hash.update(execFileSync('git', ['-c', `safe.directory=${sourceRoot}`, ...args], { cwd: sourceRoot }))
-  for (const file of ['pnpm-lock.yaml', 'pnpm-workspace.yaml', 'docker/run.mjs']) {
-    hash.update(file).update(await readFile(join(sourceRoot, file)))
-  }
-  return hash.digest('hex')
+export function sourceCommit() {
+  return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: sourceRoot, encoding: 'utf8' }).trim()
 }
 
 /**
@@ -64,16 +55,17 @@ export async function sourceFingerprint() {
  */
 async function run(command, args, cwd = sourceRoot) {
   const child = spawn(command, args, { cwd, stdio: 'inherit' })
-  const interrupt = () => { child.kill('SIGINT') }
-  const terminate = () => { child.kill('SIGTERM') }
+  let interrupted
+  const interrupt = () => { interrupted = 'SIGINT'; child.kill('SIGINT') }
+  const terminate = () => { interrupted = 'SIGTERM'; child.kill('SIGTERM') }
   process.on('SIGINT', interrupt)
   process.on('SIGTERM', terminate)
   try {
     await new Promise((resolve, reject) => {
       child.once('error', reject)
       child.once('exit', (code, signal) => {
-        if (code === 0 && signal === null) resolve()
-        else reject(new Error(`${command} 以${signal ?? `退出码 ${code}`}结束，已停止后续操作。`))
+        if (code === 0 && signal === null && !interrupted) resolve()
+        else reject(new Error(`${command} 以${interrupted ?? signal ?? `退出码 ${code}`}结束，已停止后续操作。`))
       })
     })
   } finally {
@@ -83,7 +75,46 @@ async function run(command, args, cwd = sourceRoot) {
 }
 
 /**
- * 明确执行准备，或运行已验证的构建产物；普通重启不安装依赖或构建。
+ * 检查构建记录、运行环境、源码及主要产物；读取权限错误直接报错。
+ * @returns {Promise<boolean>} 当前源码可直接运行时为 true，否则需要重新准备。
+ */
+export async function buildIsCurrent() {
+  let record
+  try {
+    record = JSON.parse(await readFile(buildRecord, 'utf8'))
+  } catch (error) {
+    if (error.code === 'ENOENT' || error instanceof SyntaxError) return false
+    throw error
+  }
+  if (record === null || typeof record !== 'object'
+    || record.platform !== process.platform || record.arch !== process.arch
+    || record.node !== process.versions.node
+    || record.commit !== sourceCommit()) return false
+  for (const file of ['apps/cli/lib/bin.js', 'apps/web/dist/index.html', 'node_modules/.pnpm/lock.yaml']) {
+    try { await access(join(sourceRoot, file)) } catch (error) {
+      if (error.code === 'ENOENT') return false
+      throw error
+    }
+  }
+  return true
+}
+
+/** 安装和构建全部成功、且提交未变化时才写入构建记录；失败后禁止使用旧记录。 */
+async function prepare() {
+  await rm(buildRecord, { force: true })
+  const commit = sourceCommit()
+  await run('pnpm', ['install', '--frozen-lockfile', '--force'])
+  await run('pnpm', ['--dir', 'native/system', 'run', 'build:native'])
+  await run('pnpm', ['run', 'build:artifacts'])
+  await run('pnpm', ['run', 'build:check'])
+  if (commit !== sourceCommit()) throw new Error('构建期间源码提交发生变化，请停止更新后重新启动或执行 prepare。')
+  await mkdir(dirname(buildRecord), { recursive: true })
+  await writeFile(buildRecord, JSON.stringify({ commit, platform: process.platform, arch: process.arch, node: process.versions.node }) + '\n')
+  console.log('DSH 构建完成。')
+}
+
+/**
+ * 启动前按需准备，或明确强制准备；失败时停止，不启动 Web。
  * @param {string} action - `prepare` 或 `serve`。
  * @returns {Promise<void>} 准备完成或 Web 进程退出后完成。
  */
@@ -93,31 +124,16 @@ export async function main(action) {
   }
   switch (action) {
     case 'prepare': {
-      await rm(buildRecord, { force: true })
-      await run('pnpm', ['install', '--frozen-lockfile'])
-      const fingerprint = await sourceFingerprint()
-      await run('pnpm', ['--dir', 'native/system', 'run', 'build:native'])
-      await run('pnpm', ['run', 'build:artifacts'])
-      await run('pnpm', ['run', 'build:check'])
-      if (fingerprint !== await sourceFingerprint()) throw new Error('构建期间源码发生变化，请停止编辑后重新执行 prepare。')
-      await mkdir(dirname(buildRecord), { recursive: true })
-      await writeFile(buildRecord, JSON.stringify({ fingerprint, platform: process.platform, arch: process.arch, node: process.versions.node }) + '\n')
-      console.log('DSH 构建完成，请从 Unraid Docker 页面启动已配置的容器。')
+      await prepare()
       break
     }
     case 'serve': {
       const config = webConfiguration(process.env)
-      let record
-      try {
-        record = JSON.parse(await readFile(buildRecord, 'utf8'))
-      } catch (error) {
-        throw new Error('找不到可读取的构建记录，请在 Unraid 主机的源码 checkout 中运行 sh docker/prepare.sh dsh。', { cause: error })
-      }
-      if (record === null || typeof record !== 'object'
-        || record.platform !== process.platform || record.arch !== process.arch
-        || record.node !== process.versions.node
-        || record.fingerprint !== await sourceFingerprint()) {
-        throw new Error('源码 checkout 或构建环境已变化，请在 Unraid 主机的源码 checkout 中运行 sh docker/prepare.sh dsh。')
+      if (!await buildIsCurrent()) {
+        console.log('DSH 构建缺失或已变化，自动准备应用。')
+        await prepare()
+      } else {
+        console.log('DSH 构建已是最新，直接启动。')
       }
       await run(process.execPath, [
         join(sourceRoot, 'apps/cli/lib/bin.js'), 'web', '--no-open',
@@ -127,7 +143,7 @@ export async function main(action) {
       break
     }
     default:
-      throw new Error('用法：prepare 或 serve（默认）。请在 Unraid 主机运行 docker/prepare.sh，准备已配置的容器。')
+      throw new Error('用法：prepare（强制准备）或 serve（默认，按需自动准备）。')
   }
 }
 

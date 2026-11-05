@@ -9,7 +9,7 @@ kind: "deployment-guide"
 
 ## 摘要
 
-Dockerfile 构建名为 `dsh-companion` 的可复用 Node 24 环境，包含编译工具、Python 3 和 pip；DSH 源码另行挂载和构建。域名、代理和宿主目录由 Unraid Docker 页面在本地保存，仓库不提供 Compose 或个人环境文件。官方 token 认证、Web 设置和插件管理保持原样。
+Dockerfile 构建名为 `dsh-companion` 的可复用 Node 24 环境，包含编译工具、Python 3 和 pip；DSH 源码随应用目录挂载，启动时按需构建。域名、代理和宿主目录由 Unraid Docker 页面在本地保存，仓库不提供 Compose 或个人环境文件。官方 token 认证、Web 设置和插件管理保持原样。
 
 ## 目录
 
@@ -24,18 +24,16 @@ Dockerfile 构建名为 `dsh-companion` 的可复用 Node 24 环境，包含编�
 <a id="build-and-configure"></a>
 ## 构建与配置
 
-统一使用 `/mnt/user/appdata/dsh` 作为应用根目录，其下只分 `source/` 和 `data/`。完整 Linux checkout 放在 `source/`，运行数据、工作区、依赖和缓存放在 `data/`。镜像从源码在本机构建，不推送到镜像仓库；构建上下文仅含 Dockerfile，不包含源码、凭据和个人设置。
+将应用根目录 `/mnt/user/appdata/dsh` 整体映射到 `/data`。完整 Linux checkout 放在 `source/`，Linux 依赖放在 `source/node_modules/`；运行数据、工作区和缓存与源码目录并列。镜像从源码在本机构建，不推送到镜像仓库；构建上下文仅含 Dockerfile，不包含源码、凭据和个人设置。
 
 ```text
 /mnt/user/appdata/dsh/
 ├── source/
-└── data/
-    ├── dsh/
-    ├── workspace/
-    ├── dependencies/
-    ├── pnpm-store/
-    ├── user/
-    └── cache/
+├── dsh/
+├── workspace/
+├── pnpm-store/
+├── user/
+└── cache/
 ```
 
 ```sh
@@ -55,15 +53,12 @@ docker build -t dsh-companion docker/
 | Icon URL | [DSH PNG](#container-icon) |
 | Extra Parameters | `--pids-limit 2048 --security-opt seccomp=unconfined --security-opt systempaths=unconfined` |
 
-在 Unraid 添加以下可写映射。统一的是宿主目录，容器内路径保持固定。checkout 和专用依赖、缓存目录必须允许 99:100 写入；不要复用 Mac、Windows 的 node_modules 或原生产物。
+在 Unraid 添加以下两个可写映射。checkout 和依赖、缓存目录必须允许 99:100 写入；不要复用 Mac、Windows 的 node_modules 或原生产物。已有 `plugins/` 仍通过 `/data/plugins` 访问。
 
 | 容器路径 | 在 Unraid 选择的宿主路径 |
 |---|---|
-| `/opt/dsh` | `/mnt/user/appdata/dsh/source` |
-| `/opt/dsh/node_modules` | `/mnt/user/appdata/dsh/data/dependencies` |
-| `/pnpm/store` | `/mnt/user/appdata/dsh/data/pnpm-store` |
-| `/data` | `/mnt/user/appdata/dsh/data` |
-| `/workspace` | `/mnt/user/appdata/dsh/data/workspace` |
+| `/data` | `/mnt/user/appdata/dsh` |
+| `/workspace` | `/mnt/user/appdata/dsh/workspace` |
 
 在 Unraid 编辑页面添加运行时变量，不把个人取值写进仓库。Dockerfile 已提供 DSH_HOME、DSH_AGENTS_HOME、HOME 和 XDG_CACHE_HOME。
 
@@ -98,19 +93,21 @@ https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/dsh-v0.2.2-rc.1/a
 <a id="prepare-and-start"></a>
 ## 准备与启动
 
-调整已有 `dsh` 容器前，先停止并备份 data 与 workspace。把独立源码 checkout 放入 `source/`，把根目录旁的 `workspace/` 移入 `data/workspace/`；已有专用依赖和 store 也放入对应 data 子目录，再修改 Unraid 映射。现有 `data/dsh/` 原地保留，包括隐藏凭据文件、所有者和权限，不要再套一层 data/dsh。容器的 DSH_HOME 仍为 `/data/dsh`，项目路径仍为 `/workspace`。按需保留旧容器定义，不要让两个容器同时使用同一份数据。
+调整已有 `dsh` 容器前，先停止并备份数据与工作区。原有嵌套布局按[挂载迁移说明](../docs/upgrade-guide/v0.2.2-rc.1/docker-data-root/guide.zh.md)整理。容器的 DSH_HOME 仍为 `/data/dsh`，项目路径仍为 `/workspace`。保留隐藏凭据文件、所有者和权限，不要让两个容器同时使用同一份数据。
 
-首次 Apply 时先不要配置自动重启。初次 serve 可能以“找不到可读取的构建记录”退出，因为应用尚未准备。在 Unraid 主机上只初始化挂载根目录的所有者，再从源码 checkout 执行维护脚本：
+首次 Apply 前，在 Unraid 主机上初始化 checkout 和运行目录。root 克隆的 checkout 需要将内部文件（包括 `.git`）的所有者设为 99:100，供 Git 和构建使用。不要递归修改现有 `dsh/` 凭据：
 
 ```sh
-cd /mnt/user/appdata/dsh/source
-docker run --rm --pull=never --volumes-from dsh --user 0:0 --entrypoint sh dsh-companion -c 'chown 99:100 /opt/dsh/node_modules /pnpm/store /data /workspace'
-sh docker/prepare.sh dsh
+mkdir -p /mnt/user/appdata/dsh/{pnpm-store,user,cache,workspace}
+chown 99:100 /mnt/user/appdata/dsh /mnt/user/appdata/dsh/{pnpm-store,user,cache,workspace}
+chown -hR 99:100 /mnt/user/appdata/dsh/source
 ```
 
-`prepare.sh` 读取已配置容器，停止它，再用相同的本地镜像 ID、用户、挂载和环境启动临时构建容器。复制的环境暂存在宿主机权限为 0600 的临时文件中，成功或失败后都会删除；脚本不打印这些值，也不写入仓库。Docker 管理员仍可查看容器设置，这不是加密的秘密存储。
+Apply 并启动容器后，它会检查构建记录、Git 提交、操作系统、架构、Node 版本和主要产物。记录缺失、损坏或过期时自动准备，构建匹配时直接启动，不执行安装和编译。首次成功启动前先关闭自动重启，避免构建失败后循环重试。
 
-准备过程安装锁定依赖、构建原生辅助程序和应用产物、执行聚合类型检查，最后记录构建结果。成功或失败都保持 `dsh` 停止。成功后从 Docker 页面启动它，开启 Unraid 自动启动，并可在 Extra Parameters 增加 `--restart=unless-stopped`。失败时先修复日志中的错误，再重新准备，不要直接启动。包 store 的锁以状态 75 拒绝并发构建或服务。
+准备过程安装锁定依赖、构建原生辅助程序和应用产物、执行聚合类型检查，最后记录构建结果并启动 Web。准备失败或期间提交变化时，不保留成功记录，也不启动 Web；修复日志中的错误后再启动。成功后开启 Unraid 自动启动，并可在 Extra Parameters 增加 `--restart=unless-stopped`。包 store 的锁以状态 75 拒绝并发构建或服务。
+
+需要强制重建时，在 checkout 中执行 `sh docker/prepare.sh dsh`。这个可选维护命令停止已配置容器，复用其本地镜像 ID、用户、挂载和环境；成功或失败都保持容器停止，成功后再启动。复制的环境暂存在权限为 0600 的临时文件中，成功或失败后都会删除。Docker 管理员仍可查看容器设置，这不是加密的秘密存储。
 
 <a id="lan-and-lucky"></a>
 ## 局域网和 Lucky
@@ -126,7 +123,7 @@ sh docker/prepare.sh dsh
 <a id="data-and-login-persistence"></a>
 ## 数据与登录持久化
 
-保持挂载数据和容器路径稳定。宿主可整体备份 `data/`，其中可重建的 `data/dependencies/`、`data/pnpm-store/` 和 `data/cache/` 可以排除。保留 `data/dsh/`（包括已安装的 profile 依赖）、`data/workspace/` 和 `data/user/`；源码的未提交改动另行备份。`/data/dsh` 保存会话、凭据、设置、profile 和已安装插件，`/data/dsh/agents` 保存共享 agents 数据。`/data/user` 是用户 home，`/data/cache` 保存缓存，`/workspace` 保存项目和 agent 产物。依赖与构建记录位于专用 Linux 挂载中，不在镜像内。
+保持挂载数据和容器路径稳定。整体备份应用根目录时，可排除可重建的 `source/node_modules/`、`pnpm-store/`、`cache/` 和源码生成产物。保留 `dsh/`（包括已安装的 profile 依赖）、`workspace/`、`user/`、本地插件和源码未提交改动。`/data/dsh` 保存会话、凭据、设置、profile 和已安装插件，`/data/dsh/agents` 保存共享 agents 数据。`/data/user` 是用户 home，`/data/cache` 保存缓存，`/workspace` 保存项目和 agent 产物。源码依赖与构建记录位于 `/data/source/node_modules`，不在镜像内。
 
 每次 DSH 进程重启都会更换启动 token。已有 Cookie 通常继续有效，因为签名密钥保存在 `/data/dsh/.credentials.yaml`，默认绝对有效期为 30 天。Cookie 过期、authority 或监听器 TLS 协议改变、签名密钥被替换，都需要重新登录。停止服务后备份完整 data 与 workspace，包括隐藏文件，保留所有者和凭据文件的严格权限。
 
@@ -145,9 +142,9 @@ uv 是独立的包、环境及 Python 版本管理器（[官方文档](https://d
 <a id="updates-and-verification"></a>
 ## 更新与验证
 
-同步或 rebase 挂载的 checkout 前先停止 `dsh`。再次运行 `sh docker/prepare.sh dsh`，成功后从 Unraid Docker 页面启动。普通重启不安装依赖或构建。只有 Node、pnpm、系统工具变化时才重建环境镜像；重建后在 Unraid 重新应用容器以选择新本地镜像，再针对这个已配置镜像执行准备。不要从镜像仓库强制拉取这个仅本地存在的镜像。
+同步或 rebase 挂载的 checkout 前先停止 `dsh`，随后启动即自动准备更新后的源码。普通重启复用匹配的构建。Dockerfile 变化时重建环境镜像，并在 Unraid 重新应用容器以选择新本地镜像。Node、pnpm、系统工具变化时，先执行 `sh docker/prepare.sh dsh` 强制准备，再启动。不要从镜像仓库强制拉取这个仅本地存在的镜像。
 
-缺少构建记录、源码提交或已跟踪改动变化，以及操作系统、架构、Node 版本不兼容时，服务拒绝启动。新增未跟踪源码或删除产物后需要主动准备。升级 DSH 前先备份，因为数据迁移可能使恢复旧 checkout 不足以降级。
+源码更新通过 Git 提交判断。存在未提交修改、新增未跟踪源码，或删除了检查范围以外的生成产物时，使用强制准备；检查范围包括 CLI、Web 入口和依赖锁文件。准备期间不要编辑或更新源码。升级 DSH 前先备份，因为数据迁移可能使恢复旧 checkout 不足以降级。
 
 准备后，从 checkout 根目录运行定向检查。宿主脚本测试用假的 Docker CLI 检查配置复用、构建前停止、错误传播和临时文件清理。Web 测试以隔离数据启动真实构建的 profile，检查局域网和域名认证、Cookie 隔离与重启后的 token 轮换。
 

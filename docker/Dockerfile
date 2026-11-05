@@ -6,19 +6,19 @@ RUN apt-get update \
     && npm install --global pnpm@11.28.5 \
     && rm -rf /var/lib/apt/lists/* \
     && usermod --uid 99 --gid 100 --home /data/user node \
-    && mkdir -p /opt/dsh/node_modules /data /workspace /pnpm/store \
-    && chown 99:100 /opt/dsh/node_modules /data /workspace /pnpm/store
+    && mkdir -p /data/source /data/pnpm-store /workspace \
+    && chown 99:100 /data /data/source /data/pnpm-store /workspace
 
 ENV DSH_HOME=/data/dsh \
     DSH_AGENTS_HOME=/data/dsh/agents \
     HOME=/data/user \
     XDG_CACHE_HOME=/data/cache \
     PATH="${PATH}:/data/user/.local/bin" \
-    npm_config_store_dir=/pnpm/store \
+    pnpm_config_store_dir=/data/pnpm-store \
     ELECTRON_SKIP_BINARY_DOWNLOAD=1
 
 USER node
-WORKDIR /opt/dsh
+WORKDIR /data/source
 EXPOSE 3080
-ENTRYPOINT ["/usr/bin/tini", "-g", "--", "flock", "-n", "-E", "75", "/pnpm/store/.dsh-docker.lock", "node", "/opt/dsh/docker/run.mjs"]
+ENTRYPOINT ["/usr/bin/tini", "-g", "--", "flock", "-n", "-E", "75", "/data/pnpm-store/.dsh-docker.lock", "node", "/data/source/docker/run.mjs"]
 CMD ["serve"]

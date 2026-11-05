@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The Dockerfile builds a reusable Node 24 environment named `dsh-companion`. It contains build tools, Python 3 and pip, while DSH sources are mounted and built separately. Unraid’s Docker page stores the domain, proxy and host-directory configuration locally; this repository contains no Compose file or personal environment file. Official token authentication, Web settings and plugin management remain unchanged.
+The Dockerfile builds a reusable Node 24 environment named `dsh-companion`. It contains build tools, Python 3 and pip; DSH sources are mounted with the application directory and built when needed at startup. Unraid’s Docker page stores the domain, proxy and host-directory configuration locally; this repository contains no Compose file or personal environment file. Official token authentication, Web settings and plugin management remain unchanged.
 
 ## Table of Contents
 
@@ -24,18 +24,16 @@ The Dockerfile builds a reusable Node 24 environment named `dsh-companion`. It c
 <a id="build-and-configure"></a>
 ## Build and configure
 
-Use one application root, `/mnt/user/appdata/dsh`, with only `source/` and `data/` beneath it. Put the complete Linux checkout in `source/`; keep runtime state, workspace, dependencies and caches in `data/`. The image is built locally from source and is not pushed to a registry. Its build context contains only the Dockerfile, excluding source, credentials and personal settings.
+Mount the application root `/mnt/user/appdata/dsh` as `/data`. Put the complete Linux checkout in `source/`, with its Linux dependencies in `source/node_modules/`; runtime state, workspace and caches are siblings. The image is built locally from source and is not pushed to a registry. Its build context contains only the Dockerfile, excluding source, credentials and personal settings.
 
 ```text
 /mnt/user/appdata/dsh/
 ├── source/
-└── data/
-    ├── dsh/
-    ├── workspace/
-    ├── dependencies/
-    ├── pnpm-store/
-    ├── user/
-    └── cache/
+├── dsh/
+├── workspace/
+├── pnpm-store/
+├── user/
+└── cache/
 ```
 
 ```sh
@@ -55,15 +53,12 @@ In **Docker → Add Container**, set the following fields. The image’s `node` 
 | Icon URL | [DSH PNG](#container-icon) |
 | Extra Parameters | `--pids-limit 2048 --security-opt seccomp=unconfined --security-opt systempaths=unconfined` |
 
-Add these writable mappings in Unraid. Only host paths use the unified layout; container paths stay fixed. The checkout and dedicated dependency/cache directories must be writable by 99:100. Do not reuse Mac/Windows node_modules or native artifacts.
+Add these two writable mappings in Unraid. The checkout and dependency/cache directories must be writable by 99:100. Do not reuse Mac/Windows node_modules or native artifacts. Existing plugins under `plugins/` remain accessible as `/data/plugins`.
 
 | Container path | Host path to select in Unraid |
 |---|---|
-| `/opt/dsh` | `/mnt/user/appdata/dsh/source` |
-| `/opt/dsh/node_modules` | `/mnt/user/appdata/dsh/data/dependencies` |
-| `/pnpm/store` | `/mnt/user/appdata/dsh/data/pnpm-store` |
-| `/data` | `/mnt/user/appdata/dsh/data` |
-| `/workspace` | `/mnt/user/appdata/dsh/data/workspace` |
+| `/data` | `/mnt/user/appdata/dsh` |
+| `/workspace` | `/mnt/user/appdata/dsh/workspace` |
 
 Add runtime variables in the Unraid editor; do not put personal values in repository files. The Dockerfile already supplies DSH_HOME, DSH_AGENTS_HOME, HOME and XDG_CACHE_HOME.
 
@@ -98,19 +93,21 @@ The three icon collections below currently have DeepSeek brand icons; no dedicat
 <a id="prepare-and-start"></a>
 ## Prepare and start
 
-Before changing an existing `dsh` container, stop it and back up its data/workspace. Move the standalone checkout into `source/`, and move a sibling `workspace/` into `data/workspace/`; move any existing dedicated dependencies/store into the corresponding data subdirectories before editing the Unraid mappings. Keep the existing `data/dsh/` tree in place, including hidden credential files, ownership and permissions: do not nest it under another data/dsh layer. The container’s DSH_HOME remains `/data/dsh`, and project paths remain `/workspace`. Preserve the old container definition if needed, and never run both against the same data.
+Before changing an existing `dsh` container, stop it and back up its data/workspace. For the former nested layout, follow the [mount migration](../docs/upgrade-guide/v0.2.2-rc.1/docker-data-root/guide.md). The container’s DSH_HOME remains `/data/dsh`, and project paths remain `/workspace`. Preserve hidden credential files, ownership and permissions; never run two containers against the same data.
 
-On the first Apply, leave automatic restart disabled. The initial serve can exit with “找不到可读取的构建记录”; application preparation has not run yet. Initialize only the mount-root ownership from the Unraid host, then invoke the maintenance script from the source checkout:
+Before the first Apply, initialize the checkout and runtime directories from the Unraid host. A root-owned checkout needs its files, including `.git`, assigned to 99:100 so Git and the build can use it. Do not recursively change existing `dsh/` credentials:
 
 ```sh
-cd /mnt/user/appdata/dsh/source
-docker run --rm --pull=never --volumes-from dsh --user 0:0 --entrypoint sh dsh-companion -c 'chown 99:100 /opt/dsh/node_modules /pnpm/store /data /workspace'
-sh docker/prepare.sh dsh
+mkdir -p /mnt/user/appdata/dsh/{pnpm-store,user,cache,workspace}
+chown 99:100 /mnt/user/appdata/dsh /mnt/user/appdata/dsh/{pnpm-store,user,cache,workspace}
+chown -hR 99:100 /mnt/user/appdata/dsh/source
 ```
 
-`prepare.sh` inspects the configured container, stops it, and starts a temporary build container using the same local image ID, user, mounts and environment. The copied environment is held in a mode-0600 temporary file on the host and removed on success or failure; the script never prints it or saves it in the repository. Ordinary Docker administrators can still inspect container settings; this is not encrypted secret storage.
+Apply and start the container. It checks the saved build record, Git commit, OS, architecture, Node version and primary artifacts. A missing, malformed or outdated record triggers preparation automatically; a matching build starts directly without installation or compilation. Keep automatic restart disabled until the first successful startup so a failing build does not loop.
 
-Preparation installs locked dependencies, builds native helpers and application artifacts, runs aggregate type checks, then records the build. It leaves `dsh` stopped on both success and failure. After success, start it from the Docker page, enable Unraid autostart, and optionally add `--restart=unless-stopped` to Extra Parameters. After failure, fix the logged error and repeat preparation before starting. The package-store lock rejects concurrent builds/serving with status 75.
+Preparation installs locked dependencies, builds native helpers and application artifacts, runs aggregate type checks, then records the build and starts Web. Failure or commit changes during preparation leave no successful record and do not start Web; fix the logged error and start again. After success, enable Unraid autostart and optionally add `--restart=unless-stopped` to Extra Parameters. The package-store lock rejects concurrent builds/serving with status 75.
+
+For a forced rebuild, run `sh docker/prepare.sh dsh` from the checkout. This optional maintenance command stops the configured container and reuses its local image ID, user, mounts and environment. It leaves the container stopped on success or failure; start it after success. The copied environment uses a temporary mode-0600 file removed on either outcome. Docker administrators can inspect container settings; this is not encrypted secret storage.
 
 <a id="lan-and-lucky"></a>
 ## LAN and Lucky
@@ -126,7 +123,7 @@ Restrict the published port to the LAN/Lucky. LAN HTTP and the HTTP backend leg 
 <a id="data-and-login-persistence"></a>
 ## Data and login persistence
 
-Keep the mounted data and container paths stable. The host backs up `data/` as one tree; `data/dependencies/`, `data/pnpm-store/` and `data/cache/` can be excluded because they are rebuildable. Keep `data/dsh/` (including installed profile dependencies), `data/workspace/` and `data/user/`; back up uncommitted source edits separately. `/data/dsh` holds sessions, credentials, settings, profiles and installed plugins; `/data/dsh/agents` holds shared agents data. `/data/user` is the user home and `/data/cache` holds caches. `/workspace` holds projects and agent output. Dependencies and build records live in the dedicated Linux mounts, not the image.
+Keep mounted data and container paths stable. Back up the application root; rebuildable `source/node_modules/`, `pnpm-store/`, `cache/` and generated source artifacts can be excluded. Keep `dsh/` (including installed profile dependencies), `workspace/`, `user/`, local plugins and uncommitted source edits. `/data/dsh` holds sessions, credentials, settings, profiles and installed plugins; `/data/dsh/agents` holds shared agents data. `/data/user` is the user home and `/data/cache` holds caches. `/workspace` holds projects and agent output. Source dependencies and build records live in `/data/source/node_modules`, not the image.
 
 The launch token changes on every DSH process restart. Existing cookies normally remain valid because the signing secret persists in `/data/dsh/.credentials.yaml`, with a default absolute lifetime of 30 days. Cookie expiry, changed authority/listener TLS protocol, or a replaced signing secret needs a new login. Back up complete data/workspace while stopped, including hidden files; preserve ownership and restrictive credential-file permissions.
 
@@ -145,9 +142,9 @@ uv is a separate package/environment/Python-version manager ([official documenta
 <a id="updates-and-verification"></a>
 ## Updates and verification
 
-Stop `dsh` before syncing/rebasing the mounted checkout. Run `sh docker/prepare.sh dsh` again, then start it from the Unraid Docker page after success. Normal restarts do not install packages or build. Rebuild the environment image only for Node/pnpm/system-tool changes; after rebuilding, reapply the Unraid container to select the new local image, then prepare against that configured image. Do not force-pull this local-only image from a registry.
+Stop `dsh` before syncing/rebasing the mounted checkout, then start it to prepare the updated source automatically. Normal restarts reuse a matching build. Rebuild the environment image for Dockerfile changes; after rebuilding, reapply the Unraid container to select the new local image. When Node/pnpm/system tools change, force preparation with `sh docker/prepare.sh dsh` before starting. Do not force-pull this local-only image from a registry.
 
-Serving rejects missing build records, source revision/tracked-edit changes and incompatible OS/architecture/Node versions. New untracked sources or deleted artifacts require explicit preparation. Back up before DSH upgrades because data migrations can prevent downgrade by checkout alone.
+Source updates are detected by the Git commit. Use forced preparation for uncommitted edits, new untracked source files or deleted generated artifacts other than the checked CLI, Web entry and dependency-lock files. Do not edit or update source during preparation. Back up before DSH upgrades because data migrations can prevent downgrade by checkout alone.
 
 After preparation, run focused checks from the checkout root. The host-script tests use a fake Docker CLI to check settings reuse, stop-before-build, failure propagation and temporary-file cleanup. The Web test launches the real built profile with isolated data and checks LAN/domain authentication, cookie separation and token rotation after restart.
 
