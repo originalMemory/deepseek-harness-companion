@@ -21,7 +21,7 @@
  */
 import { DRAG_MARK, RECALL_MARK } from './regions.ts'
 
-/** The selector of an element that owns a window drag region. */
+/** Default selector of elements that own window drag regions. */
 const ROW_SELECTOR = `[${DRAG_MARK}]`
 
 /**
@@ -38,6 +38,10 @@ const MOTION_EVENTS = ['transitionstart', 'transitionend', 'animationstart', 'an
 export interface WindowDragRecallOptions {
   /** Document whose marked rows are watched. */
   readonly document: Document
+  /** Native carrier platform; omission reads the document's data-platform marker. */
+  readonly platform?: string
+  /** CSS selector of actual draggable rows; omission uses data-window-drag elements. */
+  readonly rowSelector?: string
   /**
    * Schedules one frame callback and returns its canceller. The callback runs
    * asynchronously, as `requestAnimationFrame` does.
@@ -55,12 +59,13 @@ export interface WindowDragRecallOptions {
  * Watch the window's marked drag rows and pulse the recall mark whenever their
  * geometry can have moved. Installs nothing outside the darwin platform, where no
  * app-region rule exists.
- * @param options - the document to watch and the two scheduling seams.
+ * @param options - document, optional native platform and row selector, and scheduling seams.
  * @returns a disposer that stops watching, drops any pending frame, and clears the mark.
  */
 export function installWindowDragRecall(options: WindowDragRecallOptions): () => void {
   const doc = options.document
-  if (doc.documentElement.dataset.platform !== 'darwin') return () => {}
+  if ((options.platform ?? doc.documentElement.dataset.platform) !== 'darwin') return () => {}
+  const rowSelector = options.rowSelector ?? ROW_SELECTOR
   const scheduleFrame = options.scheduleFrame ?? defaultScheduleFrame
   const watchBox = options.watchBox ?? defaultWatchBox
   /** The last frame's measurement per row, the baseline a change is read against. */
@@ -83,7 +88,7 @@ export function installWindowDragRecall(options: WindowDragRecallOptions): () =>
     // Electron observe a computed app-region value that changed back. Reordering these
     // two statements silently drops the pulse.
     doc.body.removeAttribute(RECALL_MARK)
-    const rows = Array.from(doc.querySelectorAll(ROW_SELECTOR))
+    const rows = Array.from(doc.querySelectorAll(rowSelector))
     watchBoxes(rows)
     const next = new Map(rows.map(row => [row, readBox(row)] as const))
     const moved = rows.length !== geometry.size
@@ -141,7 +146,7 @@ export function installWindowDragRecall(options: WindowDragRecallOptions): () =>
    */
   const movesRows = (target: EventTarget | null): boolean => {
     if (!(target instanceof Element)) return false
-    return target.closest(ROW_SELECTOR) !== null || target.querySelector(ROW_SELECTOR) !== null
+    return target.closest(rowSelector) !== null || target.querySelector(rowSelector) !== null
   }
 
   /** Re-arm for a transition or animation that can be sliding a marked row. */
@@ -150,7 +155,7 @@ export function installWindowDragRecall(options: WindowDragRecallOptions): () =>
   }
 
   const observer = new MutationObserver((records) => {
-    if (records.some(record => touchesRows(record, geometry.keys()))) arm()
+    if (records.some(record => touchesRows(record, geometry.keys(), rowSelector))) arm()
   })
   observer.observe(doc.body, { subtree: true, childList: true, attributes: true, characterData: true })
   for (const type of MOTION_EVENTS) doc.addEventListener(type, onMotion, true)
@@ -185,14 +190,15 @@ function readBox(row: Element): string {
  * change of its own.
  * @param record - the mutation record to classify.
  * @param rows - the rows the last frame measured.
+ * @param rowSelector - selector of the actual draggable rows.
  * @returns true when the drag surface has to be re-measured.
  */
-function touchesRows(record: MutationRecord, rows: Iterable<Element>): boolean {
+function touchesRows(record: MutationRecord, rows: Iterable<Element>, rowSelector: string): boolean {
   // The pulse writes its own mark on the body; that write is not a movement, and
   // treating it as one would re-arm the watcher from its own output every frame.
   if (record.attributeName === RECALL_MARK) return false
   for (const node of [...record.addedNodes, ...record.removedNodes]) {
-    if (node instanceof Element && (node.matches(ROW_SELECTOR) || node.querySelector(ROW_SELECTOR) !== null)) {
+    if (node instanceof Element && (node.matches(rowSelector) || node.querySelector(rowSelector) !== null)) {
       return true
     }
   }
@@ -203,10 +209,14 @@ function touchesRows(record: MutationRecord, rows: Iterable<Element>): boolean {
     // A plain sibling inserted or removed beside a marked row shifts that row without
     // resizing it, so the box watcher never reports it. Only the container a row lives
     // in can move it, which keeps streamed appends outside the surface out of here.
-    for (const row of rows) if (target.contains(row)) return true
+    for (const row of rows) {
+      if (target.contains(row)) return true
+      // Detached rows can stop matching selectors that require their former ancestors.
+      for (const removed of record.removedNodes) if (removed.contains(row)) return true
+    }
     return false
   }
-  return target.closest(ROW_SELECTOR) !== null || target.querySelector(ROW_SELECTOR) !== null
+  return target.closest(rowSelector) !== null || target.querySelector(rowSelector) !== null
 }
 
 /** Schedule one frame through the browser's animation frame queue. */
