@@ -52,11 +52,11 @@ beforeEach(() => {
 })
 afterEach(() => { vi.restoreAllMocks() })
 
-function setup(language = 'en') {
+function setup(language = 'en', present: (body: string, sessionId: string) => boolean = () => false) {
   const window = new BrowserWindow()
   const messages = companionMessages(language)
   const unread = vi.fn()
-  const notifications = new CompletionNotifications(window, 'https://nas.example.com', messages, () => {}, unread)
+  const notifications = new CompletionNotifications(window, 'https://nas.example.com', messages, () => {}, unread, present)
   const cdp = (method: string, value: unknown) => { window.webContents.debugger.emit('message', {}, method, value) }
   const frame = (direction: 'Sent' | 'Received', message: unknown) => {
     cdp(`Network.webSocketFrame${direction}`, { requestId: 'socket', response: { opcode: 1, payloadData: JSON.stringify(message) } })
@@ -77,6 +77,25 @@ function setup(language = 'en') {
   }
   return { window, notifications, cdp, event, finish, start, messages, unread, toasts: native.toasts as Notification[] }
 }
+
+it('routes desktop completions once without native fallback while preserving unread and outcome semantics', async () => {
+  const present = vi.fn(() => true)
+  const s = setup('en', present)
+  await s.notifications.ready
+  s.finish(1)
+  s.event('turn/end', { turn: 1, reason: { kind: 'completed' } })
+  s.finish(2, 'error')
+  s.finish(3, 'aborted')
+  s.finish(4, 'blocked')
+  native.focused = true
+  s.finish(5)
+  expect(present.mock.calls).toEqual([
+    [s.messages.replyCompleted, 's'], [s.messages.replyFailed, 's'], [s.messages.turnEnded, 's'],
+  ])
+  expect(s.toasts).toEqual([])
+  expect(s.unread).toHaveBeenCalledTimes(3)
+  s.notifications.dispose()
+})
 
 it('enables observation before navigation and coalesces concurrent readiness waits', async () => {
   const pending = Promise.withResolvers<void>()

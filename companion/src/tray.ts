@@ -1,5 +1,5 @@
 /** Official DesktopTray interaction and whale assets adapted for Companion and macOS running status. */
-import { Menu, nativeImage, Tray, dialog, type NativeImage } from 'electron'
+import { Menu, nativeImage, Tray, dialog, type NativeImage, type MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { COMPANION_NAME } from './identity.ts'
 import type { CompanionMessages } from './locale.ts'
@@ -23,7 +23,7 @@ export class CompanionTray {
    * @param exiting - Whether an explicit application quit must close windows instead of hiding them; omission means false.
    */
   constructor(
-    private readonly messages: CompanionMessages, private readonly open: () => void, quit: () => void,
+    private readonly messages: CompanionMessages, private readonly open: () => void, private readonly quit: () => void,
     platform: string = process.platform,
     private readonly exiting: () => boolean = () => false,
   ) {
@@ -40,17 +40,26 @@ export class CompanionTray {
     this.tray = tray
     try {
       tray.on('click', open)
-      tray.setContextMenu(Menu.buildFromTemplate([
-        { label: messages.openApplication, click: open },
-        { type: 'separator' },
-        { label: messages.quit, click: quit },
-      ]))
+      this.setPetItems([])
       this.setRunning(undefined)
     } catch (error) { this.dispose(); throw error }
   }
 
   /** Whether a window close may hide to the tray without blocking explicit quit. */
   get available(): boolean { return this.tray !== undefined && !this.exiting() }
+
+  /**
+   * Refresh the retained pet toggle without replacing tray status or click behavior.
+   * @param items - Current pet actions; an empty list removes them during server replacement.
+   */
+  setPetItems(items: MenuItemConstructorOptions[]): void {
+    try {
+      this.tray?.setContextMenu(Menu.buildFromTemplate([
+        { label: this.messages.openApplication, click: this.open }, ...items,
+        { type: 'separator' }, { label: this.messages.quit, click: this.quit },
+      ]))
+    } catch (_error) { this.unavailable() }
+  }
 
   /**
    * Show observed running work; unknown coverage never claims idle.
@@ -98,11 +107,15 @@ export class CompanionTray {
         ? this.messages.activityRunning.replace('{count}', String(this.running)) : this.messages.activityIdle
       tray.setToolTip(`${COMPANION_NAME} — ${status}${this.unread ? ' · 有未读回复' : ''}`)
     } catch (_error) {
-      this.dispose()
-      this.open()
-      console.warn(this.messages.trayUnavailable)
-      dialog.showErrorBox(COMPANION_NAME, this.messages.trayUnavailable)
+      this.unavailable()
     }
+  }
+
+  private unavailable(): void {
+    this.dispose()
+    this.open()
+    console.warn(this.messages.trayUnavailable)
+    dialog.showErrorBox(COMPANION_NAME, this.messages.trayUnavailable)
   }
 
   /** Remove the native icon after window teardown, or after a tray failure. */

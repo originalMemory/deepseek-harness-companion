@@ -51,13 +51,14 @@ export function loadWindowBounds(userData: string, messages: Pick<CompanionMessa
  * @param userData - Companion-owned preference directory.
  * @param messages - Localized storage failure copy; repeated failures show one dialog per window.
  * @param fileName - Preference filename; omission uses the main window's window-state.json.
+ * @param readBounds - Optional owner-specific layout reader; omission saves the native normal bounds.
  * @returns Disposer for the window-owned listeners; also runs when the window closes.
  */
-export function rememberWindowBounds(window: BrowserWindow, userData: string, messages: Pick<CompanionMessages, 'windowStateWriteFailed'>, fileName = 'window-state.json'): () => void {
+export function rememberWindowBounds(window: BrowserWindow, userData: string, messages: Pick<CompanionMessages, 'windowStateWriteFailed'>, fileName = 'window-state.json', readBounds: () => Rectangle = () => window.getNormalBounds()): () => void {
   let previous: string | undefined
   let reported = false
-  let latest = window.getNormalBounds()
-  const track = (): void => { if (!window.isDestroyed()) latest = window.getNormalBounds() }
+  let latest = readBounds()
+  const track = (): void => { if (!window.isDestroyed()) latest = readBounds() }
   const persist = (): void => {
     try {
       const raw = `${JSON.stringify(latest)}\n`

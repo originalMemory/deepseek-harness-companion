@@ -15,6 +15,7 @@ Companion opens a remote DeepSeek Harness Web GUI without starting a local Host.
 - [Run](#run)
 - [Window and shortcut](#window-and-shortcut)
 - [Wallpaper](#wallpaper)
+- [Desktop pet](#desktop-pet)
 - [Notifications](#notifications)
 - [Tray and running status](#tray-and-running-status)
 - [Identity and storage](#identity-and-storage)
@@ -77,11 +78,25 @@ Automatic rotation keeps the current background when an image cannot be read, lo
 
 After building, run `node companion/scripts/check-wallpaper.mjs` to verify folder selection, image compositing, next image, reload restoration, disabling restores the original background, and saved preferences in a real Electron window. This check uses temporary preferences and a local page; the server's content security policy must allow `data:` images, and opaque panels in custom skins can obscure wallpaper.
 
+<a id="desktop-pet"></a>
+
+## Desktop pet
+
+Enable **Show desktop pet** in the application menu, caption context menu or tray. It is off initially and remembers your choice across restarts. The selected server needs the Companion plugin's `/api/dsh-companion/avatar/pet` v1 page and an enabled, configured avatar. Complete pairing in the main GUI first; the pet starts after the existing observer establishes session status and reuses `persist:companion`. It creates no chat identity, history, credentials or additional Gateway connection.
+
+The transparent, frameless pet stays on top without taking focus when it appears. Transparent areas pass mouse input through; click the character to interact or drag it to move. The application and caption menus provide **Reset desktop pet position**, which moves it to the bottom-right of the main GUI's display; that is also its first-use position. Its layout is fitted to display work areas and saved independently in `pet-window-state.json`; its switch lives in `pet-settings.json`. Saved layout follows the character's visible bounds, so a temporary bubble does not shift its restored position. Turning it off destroys the pet and restores the GUI avatar. A ready pet replaces the GUI avatar locally, including after GUI reload, without changing the server's shared avatar setting. Server changes destroy the previous pet before connecting another one.
+
+Scroll over the character to change its size from 50% to 150%, or use **Smaller character**, **Larger character** and **Reset character size** in the application or caption menu. Only the model stage changes size: bubble text and width stay independent, and scrolling inside a bubble still scrolls its text. The local scale is saved in `pet-settings.json`, with 100% for older settings. Short displays can reduce the effective size to retain notification space. The native window samples the visible contour once when the model is ready and once after scaling, cropping transparent canvas margins with 12 CSS pixels of reference padding rounded to native pixels. Animation plays inside this fixed viewport without resizing or repositioning the window or stage; mouse hit testing remains live. Reloading the model or changing the effective display/zoom size establishes a new reference. A bubble wider than the character retains its own space. Scaling preserves the reference contour's bottom center where the display work area allows it.
+
+In desktop mode, background completion reminders use a plain-text, 12-second head bubble instead of a system notification. A new reminder replaces the current bubble; hiding clears it. Clicking it restores the retained main window and current conversation; precise session navigation is not provided. Closing or timing out a bubble does not clear unread status. A hidden, loading or failed pet keeps unread replies without falling back to system notifications or replaying old reminders. An unavailable pet restores the GUI avatar and reports recovery instructions; turn the switch off and on after fixing login, plugin or model settings. There is no automatic speech or AI rewrite. Turning desktop mode off restores native notifications.
+
+After building, `node companion/scripts/check-pet.mjs` checks the shipped remote entry, isolated preload, early host marker, shared-session permission dispatch, completion routing and cleanup with temporary local fixtures. It does not qualify real Live2D rendering, OS transparent-pixel input, mixed DPI or multi-monitor behavior; those require Windows/macOS device verification.
+
 <a id="notifications"></a>
 
 ## Notifications
 
-Companion observes the page's existing Gateway WebSocket in the shell; no NAS plugin, server edit, or extra authenticated connection is needed. When the window is in the background, an observed reply end can display a native system notification. Like nanobot, focused windows are quiet, clicking a notification restores and focuses the window, and a successful reply can include a plain-text preview bounded to 240 UTF-8 bytes.
+Companion observes the page's existing Gateway WebSocket in the shell; observation needs no NAS plugin, server edit, or extra authenticated connection. When the window is in the background, an observed reply end can display a native system notification, or a [desktop pet](#desktop-pet) bubble when that mode is selected. Like nanobot, focused windows are quiet, clicking a notification restores and focuses the window, and a successful reply can include a plain-text preview bounded to 240 UTF-8 bytes.
 
 Durable `turn/end` events distinguish success, failure and cancellation; known cancellation is quiet. For other background sessions, the live control stream can reveal that a turn ended without revealing its reason, so the reminder says the turn ended rather than claiming success. Active detailed streams take precedence over this fallback. Historical snapshots and connection loss alone never trigger a reminder. Deduplication retains up to 256 inactive sessions in each remote window; running sessions are retained separately from that limit. A terminated observation stream invalidates running state that no surviving live stream covers. Only supported same-origin `/api/remote.mux` and `/remote/api/remote.mux` channels are observed; changing their wire format requires updating Companion. Opening Developer Tools pauses observation; close the tools and reload the remote page to restore its stream subscriptions. Observation or native-notification failures are reported; ordinary browsing remains available.
 

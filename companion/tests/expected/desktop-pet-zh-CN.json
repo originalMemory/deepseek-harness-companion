@@ -1,0 +1,46 @@
+{
+  "off": [
+    {
+      "label": "显示桌宠",
+      "checked": false
+    },
+    {
+      "label": "重置桌宠位置",
+      "enabled": false
+    },
+    {
+      "label": "缩小人物",
+      "enabled": false
+    },
+    {
+      "label": "放大人物",
+      "enabled": false
+    },
+    {
+      "label": "重置人物大小",
+      "enabled": false
+    }
+  ],
+  "on": [
+    {
+      "label": "显示桌宠",
+      "checked": true
+    },
+    {
+      "label": "重置桌宠位置",
+      "enabled": true
+    },
+    {
+      "label": "缩小人物",
+      "enabled": true
+    },
+    {
+      "label": "放大人物",
+      "enabled": true
+    },
+    {
+      "label": "重置人物大小",
+      "enabled": true
+    }
+  ]
+}

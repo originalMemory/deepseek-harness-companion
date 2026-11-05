@@ -27,6 +27,16 @@ const en = {
   windowStateReadFailed: 'The saved window layout could not be read. The default layout will be used. Check window-state.json in the application data folder.',
   windowStateWriteFailed: 'The window layout could not be saved and may not be restored next time. Check access to the application data folder.',
   settingsFailed: 'The server address could not be read or saved. You may need to enter it again next time.',
+  showPet: 'Show desktop pet',
+  resetPetPosition: 'Reset desktop pet position',
+  petSmaller: 'Smaller character',
+  petLarger: 'Larger character',
+  petResetScale: 'Reset character size',
+  petUnavailable: 'The desktop pet is unavailable. The chat avatar has been restored. Check server login, the Companion plugin and avatar settings, then turn the desktop pet off and on to retry. Desktop mode keeps unread replies without system notifications.',
+  petSettingsReadFailed: 'Desktop pet settings could not be read. The pet is off; check pet-settings.json in the application data folder, then enable it again.',
+  petSettingsWriteFailed: 'Desktop pet settings could not be saved. The previous choice remains active. Check access to the application data folder and retry.',
+  petLayoutReadFailed: 'The saved desktop pet layout could not be read. The default layout will be used. Check pet-window-state.json in the application data folder.',
+  petNotificationSkipped: 'Desktop pet unavailable or hidden; the reply remains unread. Open Companion from the tray to read it.',
 }
 
 /** Complete copy passed to the credential-free address form and native dialogs. */
@@ -60,6 +70,16 @@ const zh: CompanionMessages = {
   windowStateReadFailed: '无法读取窗口位置和尺寸，将使用默认布局。请检查应用配置目录中的 window-state.json。',
   windowStateWriteFailed: '无法保存窗口位置和尺寸，下次启动可能无法恢复。请检查应用配置目录的权限。',
   settingsFailed: '无法读取或保存服务器地址，下次启动时可能需要重新输入。',
+  showPet: '显示桌宠',
+  resetPetPosition: '重置桌宠位置',
+  petSmaller: '缩小人物',
+  petLarger: '放大人物',
+  petResetScale: '重置人物大小',
+  petUnavailable: '桌宠不可用，已恢复聊天页形象。请检查服务器登录、伴侣插件和形象设置，再关闭并开启桌宠重试。桌宠模式保留未读回复，不发送系统通知。',
+  petSettingsReadFailed: '无法读取桌宠设置，桌宠已关闭。请检查应用配置目录中的 pet-settings.json，再重新开启。',
+  petSettingsWriteFailed: '无法保存桌宠设置，保留之前的选择。请检查应用配置目录权限后重试。',
+  petLayoutReadFailed: '无法读取桌宠布局，将使用默认位置。请检查应用配置目录中的 pet-window-state.json。',
+  petNotificationSkipped: '桌宠不可用或已隐藏，回复仍保留未读。请从托盘打开 Companion 阅读。',
 }
 
 /**

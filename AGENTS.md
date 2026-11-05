@@ -16,6 +16,7 @@ Record each externally perceptible breaking change immediately in an [upgrade gu
 
 ```
 vendor/      Vendored Cordis (vendor/README.md)
+companion/   Independent Electron remote client (companion/CLAUDE.md)
 packages/    @deepseek-ai/dsh-<pkg> workspaces at packages/<group>/<pkg>/
   core/                 agent/session API
   api/                  remote BFF

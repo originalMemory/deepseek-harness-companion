@@ -55,7 +55,7 @@ it('opens the remembered server immediately without a local-or-remote choice', a
   await import('../src/main.ts')
   await vi.waitFor(() => { expect(state.remote).toHaveBeenCalledOnce() })
   expect(state.remote).toHaveBeenCalledWith('https://nas.example.com', expect.anything(), expect.any(Function),
-    process.platform === 'win32' || process.platform === 'darwin' ? expect.anything() : undefined, undefined)
+    process.platform === 'win32' || process.platform === 'darwin' ? expect.anything() : undefined, undefined, '/companion-data')
   expect(state.prompt).not.toHaveBeenCalled()
   expect(state.identity.mock.invocationCallOrder[0]).toBeLessThan(state.lock.mock.invocationCallOrder[0]!)
 })
@@ -147,7 +147,7 @@ it('restores and tracks bounds only for the remote application window', async ()
   await import('../src/main.ts')
   await vi.waitFor(() => { expect(state.remote).toHaveBeenCalledOnce() })
   expect(state.remote).toHaveBeenCalledWith('https://nas.example.com', expect.anything(), expect.any(Function),
-    process.platform === 'win32' || process.platform === 'darwin' ? expect.anything() : undefined, bounds)
+    process.platform === 'win32' || process.platform === 'darwin' ? expect.anything() : undefined, bounds, '/companion-data')
   expect(geometry.load).toHaveBeenCalledWith('/companion-data', expect.anything())
   expect(geometry.remember).toHaveBeenCalledWith(window, '/companion-data', expect.anything())
 })

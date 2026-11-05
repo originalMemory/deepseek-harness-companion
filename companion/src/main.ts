@@ -65,7 +65,7 @@ else {
       if (url === undefined || await openRemoteWindow(url, messages, next => {
         ownWindow(next)
         rememberWindowBounds(next, userData, messages)
-      }, tray, loadWindowBounds(userData, messages)) === 'quit') { app.quit(); return }
+      }, tray, loadWindowBounds(userData, messages), userData) === 'quit') { app.quit(); return }
       url = undefined
     }
   }).catch(() => {

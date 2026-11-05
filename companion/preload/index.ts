@@ -9,6 +9,28 @@ import { installWindowDragRecall } from '../../packages/client/web/src/window-dr
 const conversationDragRow = `header[${DRAG_MARK}] > [data-conversation-header-leading] + div`
 
 if (process.isMainFrame && ['http:', 'https:'].includes(location.protocol)) {
+  // Synchronous state is available before the remote plugin's first script executes.
+  let avatarHost = process.argv.includes('--companion-avatar-host')
+    && ipcRenderer.sendSync('companion:avatar-host') === 'desktop' ? 'desktop' : 'web'
+  const markHost = (): void => {
+    if (document.documentElement !== null) document.documentElement.dataset.companionAvatarHost = avatarHost
+  }
+  const hostObserver = new MutationObserver(() => {
+    if (document.documentElement !== null) { markHost(); hostObserver.disconnect() }
+  })
+  if (document.documentElement === null) hostObserver.observe(document, { childList: true })
+  else markHost()
+  const hostChanged = (_event: Electron.IpcRendererEvent, host: unknown): void => {
+    if (host !== 'desktop' && host !== 'web') return
+    avatarHost = host
+    markHost()
+    window.postMessage({ source: 'dsh-companion:electron', version: 1, type: 'host', host }, location.origin)
+  }
+  ipcRenderer.on('companion:avatar-host-changed', hostChanged)
+  window.addEventListener('pagehide', () => {
+    hostObserver.disconnect()
+    ipcRenderer.removeListener('companion:avatar-host-changed', hostChanged)
+  }, { once: true })
   installWallpaperPresentation()
   // data-platform opts into the official native keyboard bridge, which this remote client does not expose.
   const mark = (): void => {

@@ -1,0 +1,46 @@
+{
+  "off": [
+    {
+      "label": "Show desktop pet",
+      "checked": false
+    },
+    {
+      "label": "Reset desktop pet position",
+      "enabled": false
+    },
+    {
+      "label": "Smaller character",
+      "enabled": false
+    },
+    {
+      "label": "Larger character",
+      "enabled": false
+    },
+    {
+      "label": "Reset character size",
+      "enabled": false
+    }
+  ],
+  "on": [
+    {
+      "label": "Show desktop pet",
+      "checked": true
+    },
+    {
+      "label": "Reset desktop pet position",
+      "enabled": true
+    },
+    {
+      "label": "Smaller character",
+      "enabled": true
+    },
+    {
+      "label": "Larger character",
+      "enabled": true
+    },
+    {
+      "label": "Reset character size",
+      "enabled": true
+    }
+  ]
+}

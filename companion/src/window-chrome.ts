@@ -37,25 +37,34 @@ export const captionPreload = fileURLToPath(new URL('./preload.cjs', import.meta
  * @param messages - Companion recovery and quit labels.
  * @param change - Replace the current server window.
  * @param wallpaper - Open local wallpaper settings.
+ * @param extraItems - Optional native application actions; omission adds no actions.
+ * @param avatarHost - Current avatar owner; omission leaves the avatar in the GUI.
+ * @returns Rebuilds the application menu after action state changes.
  */
-export function installWindowChrome(window: BrowserWindow, origin: string, messages: CompanionMessages, change: () => void, wallpaper?: () => void): void {
+export function installWindowChrome(window: BrowserWindow, origin: string, messages: CompanionMessages, change: () => void, wallpaper?: () => void, extraItems: () => MenuItemConstructorOptions[] = () => [], avatarHost: () => 'web' | 'desktop' = () => 'web'): () => void {
   const trusted = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean =>
     !window.isDestroyed() && event.sender === window.webContents && event.senderFrame === window.webContents.mainFrame
     && event.senderFrame !== null && new URL(event.senderFrame.url).origin === origin
+  const initialHost = (event: Electron.IpcMainEvent): void => {
+    event.returnValue = trusted(event) ? avatarHost() : 'web'
+  }
+  ipcMain.on('companion:avatar-host', initialHost)
   const applicationItems = (): MenuItemConstructorOptions[] => [
     ...(process.platform === 'darwin' ? [{ role: 'about' as const }, { type: 'separator' as const }] : []),
     { label: messages.change, click: change },
     ...(wallpaper === undefined ? [] : [{ label: '背景轮播…', click: wallpaper }]),
+    ...extraItems(),
     { type: 'separator' },
     ...(process.platform === 'darwin' ? [{ role: 'hide' as const }, { role: 'hideOthers' as const }, { role: 'unhide' as const }, { type: 'separator' as const }] : []),
     { label: messages.quit, role: 'quit' },
   ]
-  Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32' ? [
+  const refresh = (): void => { Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32' ? [
     { role: 'toggleDevTools', visible: false }, { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
   ] : [
     { label: COMPANION_NAME, submenu: applicationItems() },
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
-  ]))
+  ])) }
+  refresh()
   window.on('system-context-menu', (event) => {
     event.preventDefault()
     Menu.buildFromTemplate(applicationItems()).popup({ window })
@@ -109,9 +118,11 @@ export function installWindowChrome(window: BrowserWindow, origin: string, messa
   }
   window.once('closed', () => {
     ipcMain.removeListener(contextMenuChannel, contextMenu)
+    ipcMain.removeListener('companion:avatar-host', initialHost)
     if (process.platform === 'win32') { ipcMain.removeListener(appearanceChannel, appearance); ipcMain.removeHandler(menuChannel) }
     Menu.setApplicationMenu(null)
   })
+  return refresh
 }
 
 /**

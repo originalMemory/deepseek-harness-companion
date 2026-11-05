@@ -30,11 +30,13 @@ export class CompletionNotifications {
    * @param messages - Localized notification and failure copy.
    * @param activity - Updates the tray with observed running turns, or undefined when observation is unavailable.
    * @param unread - Marks a live background completion independently of native notification availability.
+   * @param present - Optional desktop presenter; true consumes presentation even when unavailable, false retains native toasts.
    */
   constructor(
     private readonly window: BrowserWindow, origin: string, private readonly messages: CompanionMessages,
     activity: (count: number | undefined) => void = () => {},
     private readonly unread: () => void = () => {},
+    private readonly present: (body: string, sessionId: string) => boolean = () => false,
   ) {
     this.protocol = new CompletionProtocol(origin, notice => { this.show(notice) }, activity)
     this.contents = window.webContents
@@ -117,7 +119,7 @@ export class CompletionNotifications {
       case 'ended': body = this.messages.turnEnded; break
     }
     this.unread()
-    this.toast(body)
+    if (!this.present(body, notice.sessionId)) this.toast(body)
   }
 
   private toast(body: string): void {

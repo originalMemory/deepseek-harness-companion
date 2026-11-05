@@ -145,3 +145,18 @@ it('saves the last observed layout when the native window has already been destr
   expect(window.listenerCount('move')).toBe(0)
   expect(window.listenerCount('resize')).toBe(0)
 })
+
+it('persists an owner-specific layout and retains its cached bounds after destruction', () => {
+  const { directory, window, file } = fixture()
+  let bounds = { x: 200, y: 100, width: 240, height: 440 }
+  const read = vi.fn(() => bounds)
+  rememberWindowBounds(window, directory, messages, 'window-state.json', read)
+  window.emit('hide')
+  expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(bounds)
+  bounds = { ...bounds, x: 320 }
+  window.emit('move')
+  vi.spyOn(window, 'isDestroyed').mockReturnValue(true)
+  window.emit('closed')
+  expect(read).toHaveBeenCalledTimes(3)
+  expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(bounds)
+})

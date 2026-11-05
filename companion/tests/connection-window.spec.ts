@@ -192,6 +192,7 @@ it('isolates persistent remote cookies, denies native permissions and returns to
   expect(native.partition).toHaveBeenCalledWith('persist:companion')
   expect(native.create.mock.lastCall![0].webPreferences).toEqual({
     preload: '/companion/preload.cjs',
+    additionalArguments: ['--companion-avatar-host'],
     session: native.storage, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true,
   })
   const callback = vi.fn()

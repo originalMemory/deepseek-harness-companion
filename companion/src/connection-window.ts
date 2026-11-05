@@ -8,6 +8,7 @@ import type { CompanionMessages } from './locale.ts'
 import { CompletionNotifications } from './completion-notifications.ts'
 import type { CompanionTray } from './tray.ts'
 import { captionPreload, hideCompanionWindow, installWindowChrome, remoteWindowChrome } from './window-chrome.ts'
+import { DesktopPet } from './desktop-pet.ts'
 
 const SELECT = 'https://dsh-companion.invalid/connect'
 
@@ -116,18 +117,21 @@ export async function promptRemoteAddress(
  * @param ownWindow - Registers the window for process activation and identity.
  * @param tray - Available application tray; omission preserves close-to-quit behavior.
  * @param bounds - Saved normal bounds; omission uses the default size and OS placement.
+ * @param userData - Enables device-local desktop-pet controls; omission opens only the remote GUI.
  * @returns Whether to change server or quit; ordinary close hides to an available tray without stopping observation.
  */
 export function openRemoteWindow(
   url: string, messages: CompanionMessages, ownWindow: (window: BrowserWindow) => void,
-  tray?: Pick<CompanionTray, 'available' | 'setRunning' | 'setFocused' | 'markUnread'>, bounds?: Rectangle,
+  tray?: Pick<CompanionTray, 'available' | 'setRunning' | 'setFocused' | 'markUnread'> & Partial<Pick<CompanionTray, 'setPetItems'>>, bounds?: Rectangle,
+  userData?: string,
 ): Promise<'change' | 'quit'> {
   const origin = new URL(url).origin
   const storage = session.fromPartition('persist:companion')
   const window = new BrowserWindow({
     width: 1280, height: 820, ...bounds, minWidth: 520, minHeight: 600, title: COMPANION_NAME,
     ...remoteWindowChrome(),
-    webPreferences: { preload: captionPreload, session: storage, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
+    webPreferences: { preload: captionPreload, session: storage, additionalArguments: ['--companion-avatar-host'],
+      nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   })
   const selectedOrigin = (value: string): boolean => {
     try { return new URL(value).origin === origin } catch (_error) { return false /* Provisional frames may have no URL. */ }
@@ -151,14 +155,25 @@ export function openRemoteWindow(
     window.on('close', (event) => {
       if (!forceClose && tray?.available) { event.preventDefault(); hideCompanionWindow(window) }
     })
-    const notifications = new CompletionNotifications(window, origin, messages, count => { tray?.setRunning(count) }, () => { tray?.markUnread() })
+    const pet = userData === undefined ? undefined : new DesktopPet(window, origin, userData, messages)
+    const notifications = new CompletionNotifications(window, origin, messages, count => {
+      tray?.setRunning(count)
+      if (count !== undefined) pet?.connected()
+    }, () => { tray?.markUnread() }, (body, sessionId) => pet?.present(body, sessionId) ?? false)
     window.once('closed', () => {
       notifications.dispose()
+      pet?.dispose()
+      tray?.setPetItems?.([])
       tray?.setFocused(false)
       storage.flushStorageData()
       resolve(outcome)
     })
-    installWindowChrome(window, origin, messages, change, installWallpaper(window, origin))
+    const refreshChrome = installWindowChrome(window, origin, messages, change, installWallpaper(window, origin),
+      () => pet?.menuItems() ?? [], () => pet?.avatarHost ?? 'web')
+    if (pet !== undefined) {
+      pet.changed = () => { refreshChrome(); tray?.setPetItems?.(pet.menuItems().slice(0, 1)) }
+      pet.changed()
+    }
     const failed = async (): Promise<void> => {
       if (reporting || window.isDestroyed()) return
       reporting = true

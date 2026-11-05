@@ -1,0 +1,12 @@
+# Companion navigation
+
+Independent Electron client; use [README.md](README.md) for operation and limits. Its dependencies, build, typecheck and tests are owned by this directory, separately from the root workspace.
+
+- Change startup, activation or server replacement in `src/main.ts` and `src/connection-window.ts`. The retained GUI owns the authenticated session and completion observer; replacing it disposes the pet before another server opens.
+- Change desktop-pet settings, display selection, window lifetime, hit testing, native dragging or avatar ownership in `src/desktop-pet.ts`. The existing observer's authenticated baseline starts the selected pet. An enabled but unavailable pet consumes notification presentation without native fallback; disabling restores native toasts.
+- Change model-only scaling, normalized-alpha validation and fixed-padding cropping in `src/pet-layout.ts`; `preload/pet.ts` applies full-stage dimensions and offsets, and owns trusted character-wheel input. `src/desktop-pet.ts` samples a reference contour once after readiness or scaling; animation must not trigger native bounds or stage updates. Readiness and mouse hit testing remain live. Bubble layout uses the unscaled page viewport.
+- Change the remote pet's strict v1 intents in `src/pet-protocol.ts` and its sandboxed bridge in `preload/pet.ts`; `tsdown.config.ts` bundles its separate CommonJS preload. Notification text travels as data, while main-world state and hit queries use fixed scripts with finite numeric coordinates.
+- Change the GUI's initial avatar-host marker in `preload/index.ts` and its synchronous responder in `src/window-chrome.ts`. Only remote windows declaring `--companion-avatar-host` perform that handshake; standalone preload consumers omit it. The marker must precede the remote plugin's first script.
+- Preserve outcome, deduplication, baseline and unread semantics in `src/completion-protocol.ts` and `src/completion-notifications.ts`; the pet is a presenter, never another Gateway observer.
+- Reuse `src/window-state.ts` for separate GUI, wallpaper-dialog and pet layout files; the pet supplies its own persisted-bounds reader. Native menu copy belongs in `src/locale.ts`; pet menu expected output lives in `tests/expected/`.
+- After building, `scripts/check-window.mjs`, `scripts/check-pet.mjs` and `scripts/check-wallpaper.mjs` exercise actual Electron entries with isolated fixtures. Real Live2D, OS transparent-pixel input and mixed-DPI behavior need independent device evidence.
