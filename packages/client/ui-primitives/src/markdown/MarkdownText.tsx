@@ -13,6 +13,7 @@
 
 import { memo, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
+import { MarkdownMediaContext, type MarkdownMediaRenderer } from './MarkdownMedia.ts'
 import clsx from 'clsx'
 import { copyKatexAsTex } from './copy-tex.ts'
 import { IncrementalMarkdownParser } from './incremental.ts'
@@ -187,7 +188,7 @@ class StreamingRenderer {
  * absolute HTTP(S) images render directly.
  */
 export const MarkdownText = memo(function MarkdownText({
-  text, streaming = false, labels, fileMentions, pathImages, variant = 'body', omitHtml = false, textInteractionSource = false,
+  text, streaming = false, labels, fileMentions, pathImages, variant = 'body', omitHtml = false, textInteractionSource = false, renderMedia,
 }: {
   text: string
   streaming?: boolean
@@ -197,6 +198,8 @@ export const MarkdownText = memo(function MarkdownText({
   variant?: 'body' | 'compact'
   omitHtml?: boolean
   textInteractionSource?: boolean
+  /** 媒体替换或装饰；缺省保留图片展示，变更会到达流式缓存中的节点。 */
+  renderMedia?: MarkdownMediaRenderer | undefined
 }) {
   const streamRef = useRef<StreamingRenderer | null>(null)
   const streamLabelsRef = useRef<MarkdownLabels>(labels)
@@ -211,8 +214,10 @@ export const MarkdownText = memo(function MarkdownText({
     }
     return streamRef.current.render(text)
   }, [text, streaming, labels, fileMentions, pathImages, omitHtml])
-  return <div className={clsx(css.markdown, variant === 'compact' && css.compact)}
-    data-text-interaction-source={textInteractionSource ? '' : undefined}
-    data-markdown-variant={variant === 'compact' ? variant : undefined}
-    onCopy={(event) => { copyKatexAsTex(event.nativeEvent, event.currentTarget) }}>{children}</div>
+  return <MarkdownMediaContext.Provider value={renderMedia}>
+    <div className={clsx(css.markdown, variant === 'compact' && css.compact)}
+      data-text-interaction-source={textInteractionSource ? '' : undefined}
+      data-markdown-variant={variant === 'compact' ? variant : undefined}
+      onCopy={(event) => { copyKatexAsTex(event.nativeEvent, event.currentTarget) }}>{children}</div>
+  </MarkdownMediaContext.Provider>
 })

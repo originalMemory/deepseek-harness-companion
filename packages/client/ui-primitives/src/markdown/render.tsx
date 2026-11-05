@@ -17,7 +17,7 @@
  */
 
 import type { HTMLAttributes } from 'react'
-import { Fragment, createElement, useCallback, useState } from 'react'
+import { Fragment, createElement, useCallback, useContext, useState } from 'react'
 import type { Key, ReactNode } from 'react'
 import clsx from 'clsx'
 import type * as Md from 'mdast'
@@ -34,6 +34,7 @@ import { DraggableImage } from '../DraggableImage.tsx'
 import { ImageLightbox } from '../ImageLightbox.tsx'
 import { ImagePreview } from '../ImagePreview.tsx'
 import type { PositionedBlock } from './incremental.ts'
+import { MarkdownMediaContext, MarkdownMediaFallbackProvider } from './MarkdownMedia.ts'
 import css from './MarkdownText.module.css'
 
 /** Copy-button labels forwarded to fence CodeBlocks (this package is cordis-free, so copy arrives via props). */
@@ -683,12 +684,15 @@ function MarkdownImage({ destination, alt, pathImages, streaming, inLink }: {
   inLink: boolean
 }): ReactNode {
   const { fileImages } = useMarkdownDelegate()
+  const renderMedia = useContext(MarkdownMediaContext)
   const [load] = useState(nextImageLoad)
   const file = streaming ? undefined : parseFileLink(destination)
   const resolved = file === undefined ? undefined : fileImages?.resolve(file.path)
   const src = resolved === undefined ? imageSource(destination, pathImages, load) : freshImageUrl(resolved, load)
-  if (src === undefined) return <span className={css.imageAlt}>{alt}</span>
-  return <LoadedMarkdownImage key={src} src={src} alt={alt} destination={destination} preview={inLink ? undefined : fileImages} />
+  const children = src === undefined ? <span className={css.imageAlt}>{alt}</span>
+    : <LoadedMarkdownImage key={src} src={src} alt={alt} destination={destination} preview={inLink ? undefined : fileImages} />
+  const rendered = renderMedia?.({ destination, alt, src, filePath: file?.path, streaming, inLink }, children)
+  return rendered === undefined ? children : <MarkdownMediaFallbackProvider value={children}>{rendered}</MarkdownMediaFallbackProvider>
 }
 
 function LoadedMarkdownImage({ src, alt, destination, preview }: {

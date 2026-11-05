@@ -138,3 +138,5 @@ export type { QuotePreviewProps, QuotePreviewRemoval } from './QuotePreview.tsx'
 export { formatQuoteText } from './markdown/quote-text.ts'
 
 export type { MarkdownMenuTarget } from './markdown/MarkdownDelegate.tsx'
+export type { MarkdownMedia, MarkdownMediaRenderer } from './markdown/MarkdownMedia.ts'
+export { MarkdownMediaFallback } from './markdown/MarkdownMedia.ts'

@@ -13,11 +13,12 @@ export interface AssistantNodeInjected extends PresentationInjected {
 
 type AssistantNodeViewProps = ChatNodeViewProps<'assistant-step'> & InjectFace<AssistantNodeInjected>
   & PropsRenderSlots<'conversation.chat.reasoning.body' | 'conversation.chat.message.images'>
+  & Partial<PropsRenderSlots<'conversation.chat.message.media'>>
 
 /** Streaming, settled, and interrupted Assistant states share one keyed renderer instance. */
 export const AssistantNodeView = memo(function AssistantNodeView({
   node, groupPart, useDisclosure, useGroupAction, useTurnData, turnProcess, openFile, loadImage, fileMentions,
-  usePresentation, renderSlot, t, sessionId, useContextMenu, resolveFilePath,
+  usePresentation, renderSlot, renderSlotChain, t, sessionId, useContextMenu, resolveFilePath,
 }: AssistantNodeViewProps) {
   const { getTriggerProps } = useContextMenu()
   const getFileTriggerProps = useCallback((path: string) => getTriggerProps(() => ({
@@ -59,6 +60,7 @@ export const AssistantNodeView = memo(function AssistantNodeView({
       useGroupAction={useGroupAction}
       usePresentation={usePresentation}
       renderSlot={renderSlot}
+      renderSlotChain={renderSlotChain}
       revealProcess={revealProcess}
       mentions={mentions}
       t={t}
