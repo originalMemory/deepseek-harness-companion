@@ -33,7 +33,7 @@ pnpm --dir companion install
 pnpm --dir companion start
 ```
 
-首次使用时输入服务器地址或配对链接，并在 Companion 内完成配对。以后启动会直接打开记住的服务器。在 Windows 通过 **应用 → 更换服务器…**、macOS 通过 **DeepSeek Harness Companion → 更换服务器…** 输入其他地址或新的配对链接。连接失败时可重试、更换服务器或退出。窗口内导航限于选定来源；若服务器还公布了其他局域网或公网来源，请使用所选来源的配对链接。
+首次使用时粘贴服务器日志中官方的完整 `?token=…` 登录 URL，也可使用原有配对链接。Companion 只存储 origin，独立保存持久化 Cookie，与 Chrome 等浏览器不共用。以后启动打开记住的干净 origin；Cookie 仍有效时，服务器重启不需要再次登录。主页面 HTTP 401 提供“输入登录链接…”入口；HTTP 403 提示检查可信主机和代理，不将其视为登录过期。网络错误仍提供重试、更换服务器或退出。Windows 可通过 **应用 → 更换服务器…**、macOS 可通过 **DeepSeek Harness Companion → 更换服务器…** 输入新的登录 URL。局域网 IP 和 Lucky 域名需分别首次登录；重定向仍限于所选 origin。
 
 检查并打包未签名的 Windows 便携应用：
 
@@ -53,6 +53,8 @@ pnpm update:companion
 ```
 
 `pnpm --dir companion update` 不经父工作区入口运行同一命令；`pnpm update:desktop` 是 Companion 的别名。macOS 请求退出，等待已安装的 Companion 进程结束，构建并校验已签名 ZIP／应用，在 `/Applications/DeepSeek Harness Companion.app` 旁暂存完整副本，替换后从该准确路径打开。需要 `/Applications` 的写权限。替换失败会恢复旧应用；恢复也失败时保留并报告备份路径。Windows 仅终止 Companion 的本地进程树，重新构建 x64 便携可执行文件，再从 `companion/dist/` 启动新副本；不会更新存放在其他位置的副本。远程服务器任务继续运行。构建或签名失败会保留原应用文件，不会重新启动客户端。Windows 更新命令仍需在 Windows 上实际验证。
+
+构建后，`node companion/scripts/check-login.mjs` 使用隔离 fixture 验证真实 Electron 主框架的 401/403 恢复、403 页面重试、token 换取 Cookie 的重定向，以及新窗口复用 Cookie。它不连接实际服务器，也不共用浏览器配置。
 
 <a id="window-and-shortcut"></a>
 

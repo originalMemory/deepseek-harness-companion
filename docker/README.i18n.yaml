@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docker/README.md
+/:
+  en: 8c67cbdc5d109ff9
+  zh: 263aa4bc7eb5f7d9
+/docker-deployment:
+  en: df7e9c7bf97d07f6
+  zh: acc6955378bae698
+/docker-deployment/summary:
+  en: 5a8ca428e46653ac
+  zh: f245e15d8e182913
+/docker-deployment/table-of-contents:
+  en: f78d385a8f827883
+  zh: 2834bfb071c4989a
+/docker-deployment/build-and-configure:
+  en: 345c1299f5dc2831
+  zh: 09acaa09f6ebaf53
+/docker-deployment/build-and-configure/container-icon:
+  en: 085b887804fe4c94
+  zh: ffe40b772fb683d8
+/docker-deployment/prepare-and-start:
+  en: b911d326578b4374
+  zh: 1c363abca9a19f84
+/docker-deployment/lan-and-lucky:
+  en: 49b798d53e12abca
+  zh: b387507505599444
+/docker-deployment/data-and-login-persistence:
+  en: 774fdf97b158bfbd
+  zh: 91abb9a0e7b2f287
+/docker-deployment/python:
+  en: 34a9cff15786ec08
+  zh: c0806fea07960363
+/docker-deployment/updates-and-verification:
+  en: f93463261d7efb77
+  zh: 09f55c06e2a7e406
+/docker-deployment/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

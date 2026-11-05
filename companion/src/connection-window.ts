@@ -14,7 +14,7 @@ const SELECT = 'https://dsh-companion.invalid/connect'
 
 /**
  * Validate an operator-supplied Web address without accepting embedded credentials.
- * @param value - Server address or first-use pairing link.
+ * @param value - Server address, official token URL, or first-use pairing link.
  * @returns Normalized HTTP(S) URL, or undefined for invalid input.
  */
 export function remoteUrl(value: string): string | undefined {
@@ -112,7 +112,7 @@ export async function promptRemoteAddress(
 
 /**
  * Open remote Web content with separate persistent cookies and isolated caption IPC.
- * @param url - Validated HTTP(S) address, including a first-use pairing link.
+ * @param url - Validated HTTP(S) address, including an official token or pairing link.
  * @param messages - Localized shell copy.
  * @param ownWindow - Registers the window for process activation and identity.
  * @param tray - Available application tray; omission preserves close-to-quit behavior.
@@ -151,6 +151,8 @@ export function openRemoteWindow(
     let outcome: 'change' | 'quit' = 'quit'
     let forceClose = false
     let reporting = false
+    let loadSequence = 0
+    let loading = Promise.resolve()
     const change = (): void => { forceClose = true; outcome = 'change'; window.close() }
     window.on('close', (event) => {
       if (!forceClose && tray?.available) { event.preventDefault(); hideCompanionWindow(window) }
@@ -174,16 +176,21 @@ export function openRemoteWindow(
       pet.changed = () => { refreshChrome(); tray?.setPetItems?.(pet.menuItems().slice(0, 1)) }
       pet.changed()
     }
-    const failed = async (): Promise<void> => {
-      if (reporting || window.isDestroyed()) return
+    const failed = async (reason: 'network' | 'authentication' | 'trust' = 'network'): Promise<void> => {
+      if (reporting || forceClose || window.isDestroyed()) return
       reporting = true
       try {
         const result = await dialog.showMessageBox(window, {
-          type: 'error', title: COMPANION_NAME, message: messages.failed,
-          buttons: [messages.retry, messages.change, messages.quit], cancelId: 2,
+          type: 'error', title: COMPANION_NAME,
+          message: reason === 'authentication' ? messages.authenticationFailed : reason === 'trust' ? messages.trustFailed : messages.failed,
+          buttons: reason === 'authentication' ? [messages.signIn, messages.quit] : [messages.retry, messages.change, messages.quit],
+          cancelId: reason === 'authentication' ? 1 : 2,
         })
         if (window.isDestroyed()) return
-        if (result.response === 0) {
+        if (reason === 'authentication') {
+          if (result.response === 0) change()
+          else { forceClose = true; window.close() }
+        } else if (result.response === 0) {
           reporting = false
           const current = remoteUrl(window.webContents.getURL())
           load(current !== undefined && new URL(current).origin === origin ? current : url)
@@ -195,10 +202,17 @@ export function openRemoteWindow(
       } finally { reporting = false }
     }
     const load = (target: string): void => {
-      // Network.enable needs a renderer target before the remote page opens its first socket.
-      void window.loadURL('about:blank').then(() => notifications.ready).then(() => {
-        if (!window.isDestroyed()) return window.loadURL(target)
+      const sequence = ++loadSequence
+      if (sequence > 1) window.webContents.stop()
+      // Electron 的加载监听器共用页面事件，旧加载须收尾后才能启动下一次。
+      loading = loading.then(async () => {
+        if (sequence !== loadSequence || forceClose || window.isDestroyed()) return
+        await window.loadURL('about:blank')
+        await notifications.ready
+      }).then(() => {
+        if (sequence === loadSequence && !forceClose && !window.isDestroyed()) return window.loadURL(target)
       }).catch((error: unknown) => {
+        if (sequence !== loadSequence) return
         if (error instanceof Error && 'code' in error && error.code === 'ERR_ABORTED') return
         void failed()
       })
@@ -222,6 +236,11 @@ export function openRemoteWindow(
     })
     window.webContents.on('did-fail-load', (_event, code, _description, _url, isMainFrame) => {
       if (isMainFrame && code !== -3) void failed()
+    })
+    window.webContents.on('did-navigate', (_event, destination, status) => {
+      if (!selectedOrigin(destination)) return
+      if (status === 401) void failed('authentication')
+      else if (status === 403) void failed('trust')
     })
     window.webContents.on('render-process-gone', (_event, details) => { if (details.reason !== 'clean-exit') void failed() })
     load(url)

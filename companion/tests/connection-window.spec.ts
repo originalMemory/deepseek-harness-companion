@@ -53,6 +53,7 @@ class FakeWindow extends EventEmitter {
   url = ''
   webContents = Object.assign(new EventEmitter(), {
     getURL: () => this.url,
+    stop: vi.fn(),
     setWindowOpenHandler: vi.fn<(handler: (details: { url: string }) => { action: string }) => void>(),
   })
   show = vi.fn()
@@ -98,6 +99,7 @@ it.each(['file:///tmp/a', 'javascript:alert(1)', 'ftp://nas', 'https://u:p@nas/'
 })
 
 it('accepts pairing query and fragment without changing them', () => {
+  expect(remoteUrl('https://nas.example.com/?token=official-token')).toBe('https://nas.example.com/?token=official-token')
   expect(remoteUrl(' https://nas.example.com/pair?token=once#pair ')).toBe('https://nas.example.com/pair?token=once#pair')
   expect(remoteUrl('http://192.168.1.2:8080')).toBe('http://192.168.1.2:8080/')
 })
@@ -116,11 +118,11 @@ it.each(['en', 'zh-CN'])('presents a localized remote address form without a pre
   expect(await selection).toBe('https://nas.example.com/')
 })
 
-it('remembers only the origin and reopens the selector without the pairing secret', async () => {
+it.each(['/?token=one-use', '/pair-accept?token=one-use#private'])('remembers only the origin without the login secret: %s', async (path) => {
   const { userData, window, address } = await fixture()
   const selection = promptRemoteAddress(locale.messages, userData, vi.fn())
   await vi.waitFor(() => { expect(window.show).toHaveBeenCalledOnce() })
-  const url = 'https://nas.example.com/pair-accept?token=one-use#private'
+  const url = `https://nas.example.com${path}`
   window.navigate(`https://dsh-companion.invalid/connect?url=${encodeURIComponent(url)}`)
   expect(await selection).toBe(url)
   expect(await readFile(address, 'utf8')).toBe('https://nas.example.com\n')
@@ -227,7 +229,7 @@ it('starts a renderer before awaiting network observation, then opens the server
   const renderer = Promise.withResolvers<undefined>()
   window.loadURL.mockReturnValueOnce(renderer.promise)
   const result = openRemoteWindow('https://nas.example.com/', locale.messages, vi.fn())
-  expect(window.loadURL).toHaveBeenCalledExactlyOnceWith('about:blank')
+  await vi.waitFor(() => { expect(window.loadURL).toHaveBeenCalledExactlyOnceWith('about:blank') })
   expect(monitoring.ready).not.toHaveBeenCalled()
   renderer.resolve(undefined)
   await vi.waitFor(() => { expect(window.loadURL).toHaveBeenLastCalledWith('https://nas.example.com/') })
@@ -264,6 +266,68 @@ it('blocks cross-origin redirects and offers a return to selection', async () =>
   native.dialog.mockResolvedValue({ response: 1 })
   const result = openRemoteWindow('https://nas.example.com/', locale.messages, vi.fn())
   expect(window.navigate('https://another.example.com/', 'will-redirect').preventDefault).toHaveBeenCalledOnce()
+  expect(await result).toBe('change')
+})
+
+it.each([401, 403])('offers status-specific recovery for a main-frame HTTP %s', async (status) => {
+  const { window } = await fixture()
+  native.dialog.mockResolvedValue({ response: status === 401 ? 0 : 1 })
+  const result = openRemoteWindow('https://nas.example.com/?token=private', locale.messages, vi.fn())
+  await vi.waitFor(() => { expect(window.loadURL).toHaveBeenLastCalledWith('https://nas.example.com/?token=private') })
+  window.webContents.emit('did-navigate', {}, 'https://nas.example.com/', status, '')
+  expect(await result).toBe('change')
+  const options = native.dialog.mock.lastCall![1]
+  expect(options.message).toBe(status === 401 ? locale.messages.authenticationFailed : locale.messages.trustFailed)
+  expect(JSON.stringify(options)).not.toContain('private')
+  expect(options.buttons[0]).toBe(status === 401 ? locale.messages.signIn : locale.messages.retry)
+})
+
+it('ignores a superseded load failure after retrying a forbidden page', async () => {
+  const { window } = await fixture()
+  const firstLoad = Promise.withResolvers<void>()
+  const decision = Promise.withResolvers<{ response: number }>()
+  native.dialog.mockReturnValueOnce(decision.promise)
+  window.loadURL.mockResolvedValueOnce(undefined).mockReturnValueOnce(firstLoad.promise)
+  const result = openRemoteWindow('https://nas.example.com/', locale.messages, vi.fn())
+  await vi.waitFor(() => { expect(window.loadURL).toHaveBeenCalledTimes(2) })
+  window.url = 'https://nas.example.com/'
+  window.webContents.emit('did-navigate', {}, window.url, 403, 'Forbidden')
+  decision.resolve({ response: 0 })
+  await vi.waitFor(() => { expect(window.webContents.stop).toHaveBeenCalledOnce() })
+  expect(window.loadURL).toHaveBeenCalledTimes(2)
+  firstLoad.reject(new Error('旧页面加载失败'))
+  await vi.waitFor(() => { expect(window.loadURL).toHaveBeenCalledTimes(4) })
+  expect(native.dialog).toHaveBeenCalledOnce()
+  native.dialog.mockResolvedValue({ response: 1 })
+  window.webContents.emit('did-navigate', {}, window.url, 403, 'Forbidden')
+  expect(await result).toBe('change')
+  expect(native.dialog).toHaveBeenCalledTimes(2)
+  expect(native.dialog.mock.lastCall![1].message).toBe(locale.messages.trustFailed)
+})
+
+it('ignores successful, subframe and unrelated-origin HTTP responses', async () => {
+  const { window } = await fixture()
+  const result = openRemoteWindow('https://nas.example.com/', locale.messages, vi.fn())
+  await vi.waitFor(() => { expect(window.loadURL).toHaveBeenLastCalledWith('https://nas.example.com/') })
+  window.webContents.emit('did-navigate', {}, 'https://nas.example.com/', 200, 'OK')
+  window.webContents.emit('did-navigate', {}, 'https://other.example.com/', 401, 'Unauthorized')
+  window.webContents.emit('did-frame-navigate', {}, 'https://nas.example.com/frame', 401, 'Unauthorized', false, 1, 2)
+  expect(native.dialog).not.toHaveBeenCalled()
+  window.close()
+  expect(await result).toBe('quit')
+})
+
+it('does not report a second load failure while returning from a sign-in rejection', async () => {
+  const { window } = await fixture()
+  native.dialog.mockResolvedValue({ response: 0 })
+  window.close = vi.fn()
+  const result = openRemoteWindow('https://nas.example.com/', locale.messages, vi.fn())
+  await vi.waitFor(() => { expect(window.loadURL).toHaveBeenLastCalledWith('https://nas.example.com/') })
+  window.webContents.emit('did-navigate', {}, 'https://nas.example.com/', 401, 'Unauthorized')
+  await vi.waitFor(() => { expect(window.close).toHaveBeenCalledOnce() })
+  window.webContents.emit('did-fail-load', {}, -2, 'ERR_FAILED', 'https://nas.example.com/', true)
+  expect(native.dialog).toHaveBeenCalledOnce()
+  window.destroy()
   expect(await result).toBe('change')
 })
 

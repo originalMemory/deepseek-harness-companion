@@ -33,7 +33,7 @@ pnpm --dir companion install
 pnpm --dir companion start
 ```
 
-On first use, enter your server address or pairing link and complete pairing inside Companion. Later starts open the remembered server directly. Use **Application → Change server…** on Windows or **DeepSeek Harness Companion → Change server…** on macOS to enter another address or a fresh pairing link. Connection failures offer retry, changing server, or quit. The window stays on the selected origin; use that origin's pairing link when the server also advertises other LAN or public origins.
+On first use, paste the official full `?token=…` sign-in URL from the server logs, or an existing pairing link. Companion stores only the origin and keeps its own persistent Cookie, separate from Chrome or other browsers. Later starts open the clean remembered origin; a server restart does not require another sign-in while the Cookie remains valid. Main-page HTTP 401 offers **Enter sign-in link…**; HTTP 403 explains trusted-host and proxy checks instead of treating it as an expired login. Network failures still offer retry, changing server, or quit. Use **Application → Change server…** on Windows or **DeepSeek Harness Companion → Change server…** on macOS to enter a fresh login URL. LAN IP and Lucky domain need separate initial logins; redirects remain restricted to the selected origin.
 
 Check and package the unsigned Windows portable application:
 
@@ -53,6 +53,8 @@ pnpm update:companion
 ```
 
 `pnpm --dir companion update` runs the same command without the parent workspace launcher; `pnpm update:desktop` is an alias for Companion. macOS requests Quit, waits for the installed Companion process to exit, builds and verifies its signed ZIP/application, stages a complete copy beside `/Applications/DeepSeek Harness Companion.app`, replaces it, and opens that exact path. Write permission to `/Applications` is required. A failed replacement restores the previous application; a failed restoration retains and reports the backup path. Windows terminates only Companion's local process trees, rebuilds its x64 portable executable, and launches the new copy under `companion/dist/`; it does not update a copy stored elsewhere. Remote server tasks continue. A build or signature failure leaves the previous application files in place and does not relaunch the client. Windows update execution still requires native qualification.
+
+After building, `node companion/scripts/check-login.mjs` exercises real Electron main-frame 401/403 recovery, retrying a 403 page, token-to-Cookie redirect and Cookie reuse through fresh windows in an isolated fixture. It does not contact your server or share your browser profile.
 
 <a id="window-and-shortcut"></a>
 
