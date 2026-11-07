@@ -36,7 +36,8 @@ it('advances sequence and never randomly repeats the current image', () => {
 
 it('validates local preferences and drops unrelated persisted properties', () => {
   expect(readWallpaperSettings({ ...wallpaperDefaults, unrelated: true })).toEqual(wallpaperDefaults)
-  for (const patch of [{ intervalMin: 0 }, { intervalMin: '30' }, { dir: 5 }, { order: 'x' }, { dim: 91 }, { blur: NaN }, { enabled: 1 }]) {
+  expect(readWallpaperSettings({ dim: 30 }).whiten).toBe(0)
+  for (const patch of [{ intervalMin: 0 }, { intervalMin: '30' }, { dir: 5 }, { order: 'x' }, { dim: 91 }, { whiten: 91 }, { blur: NaN }, { enabled: 1 }]) {
     expect(() => readWallpaperSettings({ ...wallpaperDefaults, ...patch })).toThrow()
   }
 })

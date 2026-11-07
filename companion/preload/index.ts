@@ -35,9 +35,22 @@ if (process.isMainFrame && ['http:', 'https:'].includes(location.protocol)) {
   // data-platform opts into the official native keyboard bridge, which this remote client does not expose.
   const mark = (): void => {
     document.documentElement.dataset.companionPlatform = process.platform
+    if (process.platform === 'win32') {
+      const drag = document.createElement('div')
+      drag.dataset.companionCaptionDrag = ''
+      drag.setAttribute('aria-hidden', 'true')
+      document.body.prepend(drag)
+      window.addEventListener('pagehide', () => { drag.remove() }, { once: true })
+    }
     if (process.platform === 'darwin' || process.platform === 'win32') {
       const style = document.createElement('style')
       style.textContent = `
+        html[data-companion-platform='win32'] [data-companion-caption-drag] {
+          position: fixed; top: env(titlebar-area-y, 0px); left: env(titlebar-area-x, 0px);
+          width: env(titlebar-area-width, 100%);
+          height: env(titlebar-area-height, var(--dsh-windows-titlebar-height, 40px));
+          pointer-events: none; -webkit-app-region: drag;
+        }
         html[data-companion-platform='darwin'] ${conversationDragRow} {
           -webkit-app-region: drag;
         }
@@ -55,8 +68,8 @@ if (process.isMainFrame && ['http:', 'https:'].includes(location.protocol)) {
   if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', mark, { once: true })
   else mark()
   syncWindowFullscreen()
-  syncWindowsAppearance()
-  window.addEventListener('contextmenu', (event) => {
+  syncWindowsAppearance(false)
+  if (process.platform === 'darwin') window.addEventListener('contextmenu', (event) => {
     const regions = Array.from(document.querySelectorAll('*')).flatMap(element => {
       const style = getComputedStyle(element)
       const region = style.getPropertyValue('-webkit-app-region')

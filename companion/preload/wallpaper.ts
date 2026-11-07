@@ -28,7 +28,7 @@ export function installWallpaperPresentation(): void {
     }).finally(() => { image.onload = null; image.onerror = null })
     return image
   }
-  const update = async (_event: Electron.IpcRendererEvent, value: { image: string; transitionMs: number; dim: number; blur: number } | null): Promise<void> => {
+  const update = async (_event: Electron.IpcRendererEvent, value: { image: string; transitionMs: number; dim: number; whiten: number; blur: number } | null): Promise<void> => {
     const current = ++generation
     if (value === null) { clear(); return }
     let image: HTMLImageElement
@@ -42,9 +42,25 @@ export function installWallpaperPresentation(): void {
       style = document.createElement('style')
       style.textContent = `
         html[data-companion-wallpaper],html[data-companion-wallpaper] body,html[data-companion-wallpaper] #root { background:transparent!important; }
+        html[data-companion-wallpaper] #root :is(
+          :has(> [data-shell-overlay]),
+          :has(> [data-shell-overlay]) > :has([data-conversation-content]),
+          :has(> [data-phase]:has(> [data-conversation-content])),
+          [data-phase]:has(> [data-conversation-content])
+        ) { background:transparent!important; }
+        html[data-companion-wallpaper][data-dsh-skin][data-windows-titlebar] #root :has(> [data-shell-overlay]) {
+          /* Preserve skin tint. An opaque frame would hide the wallpaper. */
+          background-color:rgb(from var(--dsw-specific-sidebar-fill, transparent) r g b / calc(alpha * sign(1 - alpha)))!important;
+        }
+        html[data-companion-wallpaper]:not([data-dsh-skin]) #root :is(
+          :has(> [data-shell-overlay]) > :not([data-shell-overlay]):not([data-shell-bottom]),
+          :has(> [data-window-drag])
+        ) { background:transparent!important; }
         html[data-companion-wallpaper] body { background-image:none!important; }
-        [data-companion-wallpaper-layer] { position:fixed;inset:0;z-index:-2;overflow:hidden;pointer-events:none; }
+        html[data-companion-wallpaper] [data-dsh-skin-layer="background"] > :is(img,video) { visibility:hidden!important; }
+        [data-companion-wallpaper-layer] { position:fixed;inset:0;z-index:-3;overflow:hidden;pointer-events:none; }
         [data-companion-wallpaper-layer] img { position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:opacity ease; }
+        [data-companion-wallpaper-layer]::after { content:'';position:absolute;inset:0;background:rgb(255 255 255 / var(--companion-wallpaper-whiten)); }
       `
       document.head.append(style)
       layer = document.createElement('div')
@@ -53,6 +69,7 @@ export function installWallpaperPresentation(): void {
       document.body.append(layer)
       document.documentElement.setAttribute('data-companion-wallpaper', '')
     }
+    layer.style.setProperty('--companion-wallpaper-whiten', String(value.whiten / 100))
     image.style.opacity = '0'
     image.style.transitionDuration = `${value.transitionMs}ms`
     image.style.filter = `blur(${value.blur}px) brightness(${1 - value.dim / 100})`
@@ -76,10 +93,16 @@ export function installWallpaperPresentation(): void {
       () => { if (!disposed) ipcRenderer.send('companion:wallpaper-checked', id, false) })
   }
   ipcRenderer.on('companion:wallpaper-check', check)
-  ipcRenderer.on('companion:wallpaper', listener)
+  const ready = (): void => {
+    ipcRenderer.on('companion:wallpaper', listener)
+    ipcRenderer.send('companion:wallpaper-ready')
+  }
+  if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', ready, { once: true })
+  else ready()
   window.addEventListener('pagehide', () => {
     disposed = true
     generation++
+    window.removeEventListener('DOMContentLoaded', ready)
     ipcRenderer.removeListener('companion:wallpaper', listener)
     ipcRenderer.removeListener('companion:wallpaper-check', check)
     clear()

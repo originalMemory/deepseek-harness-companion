@@ -45,6 +45,7 @@ it('uses the official native caption geometry and rejects unowned frames before 
     window.emit('system-context-menu', nativeEvent)
     expect(nativeEvent.preventDefault).toHaveBeenCalledOnce()
     expect(window.webContents.listenerCount('context-menu')).toBe(0)
+    await new Promise<void>(resolve => { setImmediate(resolve) })
     expect(native.items.slice(0, 2).map(item => item.label)).toEqual(['Change server…', '背景轮播…'])
     ;(native.items[1]!.click as () => void)()
     expect(wallpaper).toHaveBeenCalledOnce()
@@ -55,7 +56,7 @@ it('uses the official native caption geometry and rejects unowned frames before 
     ipcMain.emit('companion:context-menu', event, NaN, 5)
     expect(native.items).toBe(unchanged)
     ipcMain.emit('companion:context-menu', event, 5, 5)
-    expect(native.items[0]!.label).toBe('Change server…')
+    expect(native.items).toBe(unchanged)
     for (const invalid of [
       { ...event, senderFrame: { url: 'https://nas.example.com/' } },
       { ...event, sender: {} },

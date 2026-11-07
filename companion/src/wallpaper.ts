@@ -20,7 +20,7 @@ export function installWallpaper(window: BrowserWindow, origin: string): () => v
   let images: string[] = []
   let current = ''
   let attempted = ''
-  let presentation: { image: string; transitionMs: number; dim: number; blur: number } | null = null
+  let presentation: { image: string; transitionMs: number; dim: number; whiten: number; blur: number } | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
   let pending = Promise.resolve()
@@ -52,6 +52,8 @@ export function installWallpaper(window: BrowserWindow, origin: string): () => v
     if (!url.startsWith('http:') && !url.startsWith('https:')) return
     if (new URL(url).origin === origin) contents.send('companion:wallpaper', presentation)
   }
+  const ready = (event: Electron.IpcMainEvent): void => { if (trusted(event)) send() }
+  ipcMain.on('companion:wallpaper-ready', ready)
   const schedule = (): void => {
     clearTimeout(timer)
     if (disposed || !config.enabled || images.length === 0) return
@@ -75,14 +77,14 @@ export function installWallpaper(window: BrowserWindow, origin: string): () => v
     await checkImage(image)
     if (disposed) return
     current = selected
-    presentation = { image, transitionMs: config.transitionMs, dim: config.dim, blur: config.blur }
+    presentation = { image, transitionMs: config.transitionMs, dim: config.dim, whiten: config.whiten, blur: config.blur }
     send()
   }
   const prepare = async (next: WallpaperSettings, change: boolean): Promise<{ files: string[]; selected: string; visual: typeof presentation }> => {
     const files = !next.enabled || next.dir === '' ? [] : await scanWallpapers(next.dir, next.recursive)
     if (next.enabled && files.length === 0) throw new Error('此目录中没有支持的图片。')
     const selected = choose(files, next.order, change)
-    const visual = selected === '' ? null : { image: await wallpaperData(next.dir, selected), transitionMs: next.transitionMs, dim: next.dim, blur: next.blur }
+    const visual = selected === '' ? null : { image: await wallpaperData(next.dir, selected), transitionMs: next.transitionMs, dim: next.dim, whiten: next.whiten, blur: next.blur }
     return { files, selected, visual }
   }
   const run = (action: () => Promise<void>): Promise<boolean> => {
@@ -131,14 +133,13 @@ export function installWallpaper(window: BrowserWindow, origin: string): () => v
     dialog.showErrorBox(COMPANION_NAME, '壁纸加载失败，已保留当前背景；轮播会按原间隔继续。请检查图片或网页连接。')
   }
   ipcMain.on('companion:wallpaper-failed', decodingFailed)
-  contents.on('did-finish-load', send)
   window.once('closed', () => {
     disposed = true
     checking?.finish(false)
     ipcMain.removeListener('companion:wallpaper-checked', checked)
     if (settingsWindow !== undefined && !settingsWindow.isDestroyed()) settingsWindow.destroy()
     clearTimeout(timer)
-    contents.removeListener('did-finish-load', send)
+    ipcMain.removeListener('companion:wallpaper-ready', ready)
     ipcMain.removeListener('companion:wallpaper-failed', decodingFailed)
     presentation = null
     images = []

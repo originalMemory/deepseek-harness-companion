@@ -4,8 +4,9 @@ import { DESKTOP_IPC } from '../src/ipc.ts'
 import { syncWindowsAppearance } from '../src/preload-windows.ts'
 
 const send = vi.hoisted(() => vi.fn())
+const installMenu = vi.hoisted(() => vi.fn(() => ({ update: vi.fn(), dispose: vi.fn() })))
 vi.mock('electron', () => ({ ipcRenderer: { send } }))
-vi.mock('../src/preload-menu.ts', () => ({ installWindowsMenu: () => ({ update: vi.fn(), dispose: vi.fn() }) }))
+vi.mock('../src/preload-menu.ts', () => ({ installWindowsMenu: installMenu }))
 
 afterEach(() => {
   window.dispatchEvent(new Event('pagehide'))
@@ -15,6 +16,7 @@ afterEach(() => {
   document.body.removeAttribute('data-ds-dark-theme')
   vi.restoreAllMocks()
   send.mockClear()
+  installMenu.mockClear()
 })
 
 it.each(['darwin', 'linux'] as const)('does not install Windows controls on %s', (platform) => {
@@ -24,7 +26,7 @@ it.each(['darwin', 'linux'] as const)('does not install Windows controls on %s',
   expect(send).not.toHaveBeenCalled()
 })
 
-it('synchronizes live language and palette changes and stops observing a closed document', async () => {
+it.each([true, false])('synchronizes caption appearance with menus enabled: %s', async (showMenu) => {
   vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
   vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading')
   vi.spyOn(globalThis, 'getComputedStyle').mockImplementation(() => ({
@@ -38,10 +40,11 @@ it('synchronizes live language and palette changes and stops observing a closed 
   }
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D)
   document.documentElement.lang = 'en'
-  syncWindowsAppearance()
+  syncWindowsAppearance(showMenu)
   expect(send).not.toHaveBeenCalled()
   expect(document.documentElement.hasAttribute('data-windows-titlebar')).toBe(true)
   window.dispatchEvent(new Event('DOMContentLoaded'))
+  expect(installMenu).toHaveBeenCalledTimes(showMenu ? 1 : 0)
   expect(document.documentElement.style.getPropertyValue('--dsh-windows-titlebar-height')).toBe('40px')
   expect(send).toHaveBeenLastCalledWith(DESKTOP_IPC.windowsAppearance, 'en', 'rgba(255, 255, 255, 1)', 'rgba(0, 0, 0, 1)')
   document.documentElement.lang = 'zh-CN'

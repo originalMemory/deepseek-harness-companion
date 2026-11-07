@@ -7,12 +7,13 @@ export interface WallpaperSettings {
   intervalMin: number
   transitionMs: number
   dim: number
+  whiten: number
   blur: number
 }
 
 /** New installations leave wallpaper disabled until a directory is chosen. */
 export const wallpaperDefaults: WallpaperSettings = {
-  enabled: false, dir: '', recursive: false, order: 'random', intervalMin: 30, transitionMs: 900, dim: 0, blur: 0,
+  enabled: false, dir: '', recursive: false, order: 'random', intervalMin: 30, transitionMs: 900, dim: 0, whiten: 0, blur: 0,
 }
 
 /** Validate preferences loaded from disk, rejecting malformed or unsupported values.
@@ -24,9 +25,9 @@ export function readWallpaperSettings(value: unknown): WallpaperSettings {
   const result = { ...wallpaperDefaults, ...value }
   if (typeof result.enabled !== 'boolean' || typeof result.dir !== 'string' || typeof result.recursive !== 'boolean'
     || !['random', 'sequence'].includes(result.order)) throw new Error('Invalid wallpaper settings')
-  for (const [key, min, max] of [['intervalMin', 1, 1440], ['transitionMs', 0, 5000], ['dim', 0, 90], ['blur', 0, 40]] as const) {
+  for (const [key, min, max] of [['intervalMin', 1, 1440], ['transitionMs', 0, 5000], ['dim', 0, 90], ['whiten', 0, 90], ['blur', 0, 40]] as const) {
     if (!Number.isInteger(result[key]) || result[key] < min || result[key] > max) throw new Error('Invalid wallpaper settings')
   }
   return { enabled: result.enabled, dir: result.dir, recursive: result.recursive, order: result.order,
-    intervalMin: result.intervalMin, transitionMs: result.transitionMs, dim: result.dim, blur: result.blur }
+    intervalMin: result.intervalMin, transitionMs: result.transitionMs, dim: result.dim, whiten: result.whiten, blur: result.blur }
 }

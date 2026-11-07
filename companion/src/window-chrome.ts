@@ -67,7 +67,10 @@ export function installWindowChrome(window: BrowserWindow, origin: string, messa
   refresh()
   window.on('system-context-menu', (event) => {
     event.preventDefault()
-    Menu.buildFromTemplate(applicationItems()).popup({ window })
+    // Let Electron finish handling the native context-menu event before opening its replacement.
+    setImmediate(() => {
+      if (!window.isDestroyed()) Menu.buildFromTemplate(applicationItems()).popup({ window })
+    })
   })
   const contextMenu = (event: Electron.IpcMainEvent, x: unknown, y: unknown): void => {
     if (!trusted(event) || typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)
@@ -75,7 +78,7 @@ export function installWindowChrome(window: BrowserWindow, origin: string, messa
     const zoom = window.webContents.getZoomFactor()
     Menu.buildFromTemplate(applicationItems()).popup({ window, x: Math.round(x * zoom), y: Math.round(y * zoom) })
   }
-  ipcMain.on(contextMenuChannel, contextMenu)
+  if (process.platform === 'darwin') ipcMain.on(contextMenuChannel, contextMenu)
   const appearance = (event: Electron.IpcMainEvent, _locale: unknown, color: unknown, symbolColor: unknown): void => {
     if (!trusted(event)) return
     const validColor = (value: unknown): value is string => typeof value === 'string' && /^(?:#[\da-f]{3,8}|rgba?\([\d.,%\s]+\))$/iu.test(value)

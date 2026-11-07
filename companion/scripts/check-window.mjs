@@ -98,6 +98,8 @@ try {
       const data=await win.webContents.executeJavaScript(
         '(()=>({regions:Array.from(document.querySelectorAll("*")).flatMap(element=>{const region=getComputedStyle(element).webkitAppRegion;if(region!=="drag"&&region!=="no-drag")return [];const rect=element.getBoundingClientRect();return [{x:rect.x,y:rect.y,width:rect.width,height:rect.height,draggable:region==="drag"}]}),viewportWidth:innerWidth,dragRow:getComputedStyle(document.querySelector("[data-window-drag]")).webkitAppRegion,stripRegion:getComputedStyle(document.querySelector("[data-title-row]")).webkitAppRegion,stripHeight:getComputedStyle(document.querySelector("[data-title-row]")).height,stripTop:document.querySelector("[data-title-row]").getBoundingClientRect().top,backdropRegion:getComputedStyle(document.querySelector("[data-backdrop]")).webkitAppRegion,tabsRegion:getComputedStyle(document.querySelector("[role=tablist]")).webkitAppRegion,portalRegion:getComputedStyle(document.querySelector("[data-shell-overlay]")).webkitAppRegion,clearance:{top:document.getElementById("root").getBoundingClientRect().top,height:document.getElementById("root").getBoundingClientRect().height,viewport:innerHeight},controls:Array.from(document.querySelectorAll("[data-caption-control]")).map(button=>({region:getComputedStyle(button).webkitAppRegion,top:button.getBoundingClientRect().top})),bandContent:getComputedStyle(document.body,"::before").content,platform:document.documentElement.dataset.companionPlatform,desktopMarker:document.documentElement.dataset.platform??null,caption:document.documentElement.hasAttribute("data-windows-titlebar"),menus:Array.from(document.querySelector("[data-windows-menu]")?.shadowRoot.querySelectorAll("button")??[]).map(b=>b.textContent),focused:document.activeElement?.hasAttribute("data-composer-input"),draft:document.querySelector("[data-composer-input]").textContent,session:document.querySelector("[data-session]").dataset.session,node:typeof window.require,host:typeof window.dshDesktop}))()');
       const routing=await win.webContents.executeJavaScript(${JSON.stringify(menuRoutingScript)});
+      const captionBounds=await win.webContents.executeJavaScript('(()=>{const strip=document.querySelector("[data-companion-caption-drag]");const overlay=navigator.windowControlsOverlay?.getTitlebarAreaRect();return {strip:strip?.getBoundingClientRect().toJSON(),overlay:overlay?.toJSON()}})()');
+      if(process.platform==='win32')win.emit('system-context-menu',{preventDefault(){}});
       await firstShellMenu.promise;
       const nativeCaption=win.getContentBounds().y-win.getBounds().y;
       const area=screen.getPrimaryDisplay().workArea;
@@ -107,7 +109,7 @@ try {
       const saved=loadWindowBounds(app.getPath('userData'),companionMessages('en'));
       restoredClosed=openRemoteWindow(${JSON.stringify(origin + '/ready')},companionMessages('en'),window=>{restored=window;window.hide()},undefined,saved);
       const actual=restored.getNormalBounds();
-      writeFileSync(${JSON.stringify(result)},JSON.stringify({data,errors,environment,clipboard,recovery,routing,shellMenus,nativeCaption,windowState:{expected,saved,actual}}));
+      writeFileSync(${JSON.stringify(result)},JSON.stringify({data,errors,environment,clipboard,recovery,routing,captionBounds,shellMenus,nativeCaption,windowState:{expected,saved,actual}}));
     } finally {if(!win.isDestroyed())win.destroy();await closed;if(restored&&!restored.isDestroyed())restored.destroy();if(restoredClosed)await restoredClosed;app.quit()}
     }).catch(error=>{console.error(error);app.exit(1)});
   `)
@@ -124,7 +126,7 @@ try {
     child.once('error', error => { clearTimeout(timeout); reject(error) })
     child.once('close', code => { clearTimeout(timeout); code === 0 ? resolve() : reject(new Error(`Electron exit ${code}: ${diagnostics}`)) })
   })
-  const { data, errors, environment, clipboard, recovery, routing, shellMenus, nativeCaption, windowState } = JSON.parse(await readFile(result, 'utf8'))
+  const { data, errors, environment, clipboard, recovery, routing, captionBounds, shellMenus, nativeCaption, windowState } = JSON.parse(await readFile(result, 'utf8'))
   assert.deepEqual(errors, [])
   assert.deepEqual(windowState.actual, windowState.expected)
   assert.deepEqual(JSON.parse(await readFile(join(root, 'profile', 'window-state.json'), 'utf8')), windowState.expected)
@@ -149,12 +151,21 @@ try {
   }
   assert.equal(environment.runtime, 'web')
   assert.equal(recovery, true)
-  assert.deepEqual(routing, { drag: true, button: false, input: false, content: false, covered: false, webMenus: 4 })
+  assert.deepEqual(routing, { drag: process.platform === 'darwin', button: false, input: false, content: false, covered: false, webMenus: process.platform === 'darwin' ? 4 : 5 })
   assert.equal(shellMenus, 1)
   if (clipboard.write !== 'granted') console.error(diagnostics)
   assert.equal(clipboard.write, 'granted')
   assert.equal(clipboard.read, 'denied')
-  if (process.platform === 'win32') { assert.equal(data.caption, true); assert.deepEqual(data.menus, ['Application', 'Edit']) }
+  if (process.platform === 'win32') {
+    assert.equal(data.caption, true)
+    assert.deepEqual(data.menus, [])
+    assert.equal(isDraggableAt(data.regions, data.viewportWidth / 2, 20), true, 'Windows caption center remains draggable')
+    assert.equal(isDraggableAt(data.regions, 150, 20), false, 'Caption controls remain clickable')
+    if (captionBounds.overlay?.width > 0) {
+      assert.ok(Math.abs(captionBounds.strip.right - captionBounds.overlay.right) <= 1)
+      assert.equal(isDraggableAt(data.regions, captionBounds.strip.right - 2, 20), true, 'Drag area reaches the native buttons')
+    }
+  }
   assert.equal(data.focused, true)
   assert.equal(data.draft, 'Keep my draft')
   assert.equal(data.session, 'retained')

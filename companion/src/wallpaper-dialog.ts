@@ -3,7 +3,7 @@ import { app, BrowserWindow, dialog } from 'electron'
 import { loadWindowBounds, rememberWindowBounds } from './window-state.ts'
 import { readWallpaperSettings, type WallpaperSettings } from './wallpaper-settings.ts'
 
-const labels = { enabled: '启用背景轮播', recursive: '包含子目录', order: '轮播顺序', intervalMin: '切换间隔', dim: '暗化', blur: '模糊', transitionMs: '淡入淡出时长' }
+const labels = { enabled: '启用背景轮播', recursive: '包含子目录', order: '轮播顺序', intervalMin: '切换间隔', dim: '暗化', whiten: '白化', blur: '模糊', transitionMs: '淡入淡出时长' }
 const layoutFile = 'wallpaper-window-state.json'
 const layoutMessages = {
   windowStateReadFailed: '无法读取背景轮播设置窗口的位置，将使用默认布局。请检查应用配置目录中的 wallpaper-window-state.json。',
@@ -37,7 +37,7 @@ export function openWallpaperDialog(
   let busy = false
   const render = async (value: WallpaperSettings, status = ''): Promise<void> => {
     const row = (label: string, control: string): string => `<label class="row"><span>${escape(label)}</span><span class="controls">${control}</span></label>`
-    const number = (name: 'intervalMin' | 'dim' | 'blur' | 'transitionMs', min: number, max: number, unit: string): string =>
+    const number = (name: 'intervalMin' | 'dim' | 'whiten' | 'blur' | 'transitionMs', min: number, max: number, unit: string): string =>
       `<input aria-label="${escape(labels[name])}" type="number" name="${name}" min="${min}" max="${max}" step="1" required value="${value[name]}"><span>${unit}</span>`
     const checked = (enabled: boolean): string => enabled ? ' checked' : ''
     const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
@@ -58,6 +58,7 @@ ${row(labels.recursive, `<input type="checkbox" name="recursive"${checked(value.
 ${row(labels.order, `<select name="order"><option value="random"${value.order === 'random' ? ' selected' : ''}>${escape('随机顺序')}</option><option value="sequence"${value.order === 'sequence' ? ' selected' : ''}>${escape('文件名顺序')}</option></select>`)}
 ${row(labels.intervalMin, number('intervalMin', 1, 1440, '分钟'))}
 ${row(labels.dim, number('dim', 0, 90, '%'))}
+${row(labels.whiten, number('whiten', 0, 90, '%'))}
 ${row(labels.blur, number('blur', 0, 40, 'px'))}
 ${row(labels.transitionMs, number('transitionMs', 0, 5000, 'ms'))}
 <p class="status" role="status">${escape(status)}</p><div class="actions"><button name="action" value="next">${escape('下一张')}</button><button name="action" value="rescan">${escape('重新扫描')}</button><button class="primary" name="action" value="save">${escape('保存并应用')}</button></div>
@@ -77,7 +78,8 @@ ${row(labels.transitionMs, number('transitionMs', 0, 5000, 'ms'))}
     void (async () => {
       const value = readWallpaperSettings({
         dir: params.get('dir'), enabled: params.has('enabled'), recursive: params.has('recursive'), order: params.get('order'),
-        intervalMin: Number(params.get('intervalMin')), dim: Number(params.get('dim')), blur: Number(params.get('blur')), transitionMs: Number(params.get('transitionMs')),
+        intervalMin: Number(params.get('intervalMin')), dim: Number(params.get('dim')), whiten: Number(params.get('whiten')),
+        blur: Number(params.get('blur')), transitionMs: Number(params.get('transitionMs')),
       })
       if (action === 'choose') {
         const choice = await dialog.showOpenDialog(window, { title: '选择图片目录…', properties: ['openDirectory'] })
